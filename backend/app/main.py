@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from contextlib import asynccontextmanager
 from app.core.config import settings
-from datetime import datetime
+from datetime import datetime, timezone
 
 # CRITICAL: Import all models immediately to register them with SQLAlchemy/Base
 from app import models 
@@ -131,19 +131,16 @@ async def global_exception_handler(request, exc):
     import traceback
     error_msg = f"GLOBAL ERROR: {exc}\n{traceback.format_exc()}"
     logger.error(error_msg)
-    
-    # Also log to a file and console for visibility
-    logger.error(error_msg)
     print(f"CRITICAL BACKEND ERROR: {error_msg}")
     
     try:
         with open("backend_errors.log", "a") as f:
             f.write(f"\n{'='*40}\n")
-            f.write(f"TIMESTAMP: {datetime.utcnow()}\n")
+            f.write(f"TIMESTAMP: {datetime.now(timezone.utc)}\n")
             f.write(f"URL: {request.url}\n")
             f.write(error_msg)
             f.write(f"\n{'='*40}\n")
-    except:
+    except Exception:
         pass
 
     from fastapi.responses import JSONResponse
@@ -163,7 +160,7 @@ async def health():
     redis_ok = False
     try:
         redis_ok = redis_client.ping()
-    except:
+    except Exception:
         pass
         
     status = "ok" if (db_ok and redis_ok) else "degraded"
@@ -172,7 +169,7 @@ async def health():
         "status": status,
         "database": "connected" if db_ok else "disconnected",
         "redis": "connected" if redis_ok else "disconnected",
-        "timestamp": datetime.utcnow()
+        "timestamp": datetime.now(timezone.utc)
     }
 
 

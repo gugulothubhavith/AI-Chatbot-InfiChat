@@ -15,7 +15,7 @@ class LocalTTSEngine:
         self.default_voice = default_voice
         pygame.mixer.init()
 
-    async _generate_and_play(self, text: str, voice: str) -> None:
+    async def _generate_and_play(self, text: str, voice: str) -> None:
         communicate = edge_tts.Communicate(text, voice)
         
         # We need a temp file since pygame.mixer.Sound prefers a file path

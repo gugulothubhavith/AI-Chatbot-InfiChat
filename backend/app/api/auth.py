@@ -193,7 +193,9 @@ def update_password(
         raise HTTPException(status_code=400, detail="Old and new passwords required")
         
     if not current_user.hashed_password:
-        # User might have signed up via OTP/Google and doesn't have a password yet.
+        # User signed up via OTP/Google — they are setting a password for the first time.
+        # We cannot verify an old password that doesn't exist, so just allow it.
+        # No old_password check needed.
         pass
     elif not verify_password(old_password, current_user.hashed_password):
         raise HTTPException(status_code=400, detail="Incorrect old password")
@@ -248,7 +250,7 @@ def read_users_me(current_user: User = Depends(get_current_user)):
     Get current logged in user details.
     """
     return {
-        "access_token": "valid_session", # Placeholder or could omit if schema allows
+        "access_token": "",  # Token not re-issued on /me; client should use the existing token
         "token_type": "bearer",
         "user_id": str(current_user.id),
         "email": current_user.email,

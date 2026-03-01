@@ -48,11 +48,10 @@ def _find_models():
         if os.path.exists(onnx_path) and os.path.exists(voices_path):
             return onnx_path, voices_path
 
-    # 3. Try to find the drive root models (Windows)
-    drive = os.path.splitdrive(os.getcwd())[0] or "C:"
-    root_models = os.path.join(drive, "\\", "models")
-    onnx_path = os.path.join(root_models, "kokoro-v0_19.onnx")
-    voices_path = os.path.join(root_models, "voices-v1.0.bin")
+    # 4. Try project data directory (matches setup_windows.ps1)
+    base_data_models = os.path.join(os.getcwd(), "data", "models")
+    onnx_path = os.path.join(base_data_models, "kokoro-v0_19.onnx")
+    voices_path = os.path.join(base_data_models, "voices-v1.0.bin")
     if os.path.exists(onnx_path):
         return onnx_path, voices_path
         
@@ -79,8 +78,13 @@ def get_kokoro_model():
             async def _warmup():
                 async for _ in _kokoro_model.create_stream("Hi", voice="af_sky", speed=1.0, lang="en-us"):
                     break
-            asyncio.run_coroutine_threadsafe(_warmup(), asyncio.get_event_loop())
-            logger.info("Warmup scheduled.")
+            
+            try:
+                loop = asyncio.get_running_loop()
+                asyncio.create_task(_warmup())
+            except RuntimeError:
+                # No loop running in this thread, or it's not the main thread
+                pass
         except Exception as e:
             logger.warning(f"Warmup failed (non-critical): {e}")
             

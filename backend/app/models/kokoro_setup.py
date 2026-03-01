@@ -6,7 +6,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def download_kokoro_assets():
-    models_dir = "/models"
+    models_dir = os.path.join(os.getcwd(), "data", "models")
     os.makedirs(models_dir, exist_ok=True)
     onnx_path = os.path.join(models_dir, "kokoro-v0_19.onnx")
     voices_path = os.path.join(models_dir, "voices-v1.0.bin")

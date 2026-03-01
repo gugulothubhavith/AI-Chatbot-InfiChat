@@ -260,12 +260,9 @@ def _chunk_text(text, chunk_size=1000, overlap=200):
         
     separators = ["\n\n", "\n", ". ", " "]
     chunks = []
-    start = 0
-    text_len = len(text)
     
     # Simple recursive-like approach using the separators
     # For now, just a robust paragraph-aware splitter to keep it simple but effective
-    import re
     
     # Split by paragraphs first
     paragraphs = text.split("\n\n")

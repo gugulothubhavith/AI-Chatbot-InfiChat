@@ -1,6 +1,6 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import path from 'path'
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import path from "path";
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -14,14 +14,14 @@ export default defineConfig({
     host: true, // Listen on all local IPs
     port: 5173,
     proxy: {
-      '/api': {
-        target: 'http://ai-backend:8000',
+      "/api": {
+        target: process.env.VITE_BACKEND_URL || "http://localhost:8000",
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
+        rewrite: (path) => path.replace(/^\/api/, ""),
       },
     },
     watch: {
       usePolling: true,
     },
   },
-})
+});

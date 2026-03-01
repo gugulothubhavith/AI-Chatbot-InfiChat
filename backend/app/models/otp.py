@@ -2,7 +2,7 @@ from sqlalchemy import Column, String, DateTime, Boolean, Integer, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from app.database.db import Base
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 class OTP(Base):
     __tablename__ = "otp_codes"
@@ -13,4 +13,4 @@ class OTP(Base):
     expires_at = Column(DateTime, nullable=False)
     attempts = Column(Integer, default=0)
     password_verified = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

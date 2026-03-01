@@ -3,7 +3,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.database.db import Base
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 class Snippet(Base):
     __tablename__ = "snippets"
@@ -14,8 +14,8 @@ class Snippet(Base):
     content = Column(Text, nullable=False)
     language = Column(String, nullable=False, default="text")
     tags = Column(JSON, default=list)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=datetime.utcnow)
 
     # Relationships
     user = relationship("User", back_populates="snippets")

@@ -1,3 +1,2 @@
-dockerfile
 FROM node:20-slim
 RUN npm install -g typescript ts-node

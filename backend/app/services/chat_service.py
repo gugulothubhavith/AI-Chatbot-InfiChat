@@ -24,7 +24,7 @@ async def generate_title(content: str) -> str:
         resp = await call_llm("chat", {"model": settings.GROQ_MODEL, "messages": [{"role": "user", "content": prompt}]})
         title = resp['choices'][0]['message']['content'].strip(' "')
         return title[:100]
-    except:
+    except Exception:
         return content[:50] + "..."
 
 async def process_chat(payload: ChatRequest, user: User, db: Session, background_tasks: BackgroundTasks = None, stream: bool = False):
@@ -133,7 +133,7 @@ async def process_chat(payload: ChatRequest, user: User, db: Session, background
             query = last_msg.content or "What is this document about?"
             logger.info(f"Querying RAG for: {query[:50]}... Filter: {attached_file}")
             context = query_rag(query, filename_filter=attached_file)
-            if context:
+            if context and messages:
                 rag_instructions = (
                     "You are an AI assistant with access to a knowledge base. "
                     "Below is the relevant context retrieved from uploaded documents. "
@@ -190,7 +190,7 @@ async def process_chat(payload: ChatRequest, user: User, db: Session, background
         key_group = "vision"
     else:
         llm_model = payload.model or "chat"
-        key_group = "rag"
+        key_group = "rag" if payload.use_rag else "chat"
 
     llm_payload = {
         "messages": messages,

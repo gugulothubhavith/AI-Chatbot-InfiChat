@@ -3,7 +3,7 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 from typing import Optional
 from sqlalchemy.orm import relationship
 from app.database.db import Base
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 import enum
 
@@ -23,7 +23,7 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     avatar_url = Column(String, nullable=True)
     settings = Column(JSONB, nullable=True, default=dict)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     memories = relationship("Memory", back_populates="user", cascade="all, delete-orphan")
     chat_sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")

@@ -1,7 +1,7 @@
 from sqlalchemy import Column, String, DateTime, ForeignKey, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from app.database.db import Base
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 class File(Base):
@@ -14,4 +14,4 @@ class File(Base):
     size = Column(String)
     path = Column(String)
     extra_metadata = Column(JSON, default={})
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

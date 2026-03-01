@@ -239,13 +239,9 @@ async def call_llm(request_type: str, payload: dict, key_group: str = None, stre
         if requested_alias == "planner_agent":
             logger.info(f"Routing Planner to Groq: {model_name}")
             api_key = settings.PLANNER_API_KEY or settings.GROQ_API_KEY
-            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-            # Continue to Groq block at end
         elif requested_alias == "research_agent":
             logger.info(f"Routing Search Agent to Groq: {model_name}")
             api_key = settings.PLANNER_API_KEY or settings.GROQ_API_KEY
-            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-            # Continue to Groq block at end
         elif requested_alias == "coder_agent":
             logger.info(f"Routing Coder to OpenRouter: {model_name}")
             return await call_openrouter(payload, settings.CODER_API_KEY, stream=stream)
