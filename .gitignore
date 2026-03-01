@@ -56,6 +56,7 @@ data/uploads/
 *.sqlite3
 
 # --- System ---
+backend/venv/
 .DS_Store
 Thumbs.db
 desktop.ini

@@ -29,6 +29,8 @@ class ChatMessage(Base):
     role = Column(String, nullable=False) # 'user' or 'assistant'
     content = Column(Text, nullable=False)
     image_url = Column(String, nullable=True)
+    file_name = Column(String, nullable=True)
+    file_type = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
@@ -42,3 +44,6 @@ class SharedChat(Base):
     share_token = Column(String, unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
     snapshot_json = Column(JSON, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    session = relationship("ChatSession")

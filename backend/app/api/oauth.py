@@ -53,12 +53,12 @@ async def google_login(payload: GoogleLoginRequest):
                 db.commit()
                 db.refresh(user)
                 logger.info(f"Created new user via Google OAuth: {email}")
-            elif not user.avatar_url and picture:
-                # Update photo for existing user if missing
+            elif picture and user.avatar_url != picture:
+                # Always sync photo for existing user if it changed
                 user.avatar_url = picture
                 db.commit()
                 db.refresh(user)
-                logger.info(f"Updated profile photo for user: {email}")
+                logger.info(f"Synced profile photo for user: {email}")
             
             # Generate JWT token
             token = create_access_token(

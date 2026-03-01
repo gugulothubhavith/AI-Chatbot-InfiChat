@@ -1,6 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Body
-from fastapi.responses import Response
-from app.services import voice_service
+from fastapi.responses import StreamingResponse
+from app.services.indic_voice_service import indic_voice_service
+from app.schemas.voice import TTSRequest
 from app.core.deps import get_current_user
 from app.models.user import User
 import shutil
@@ -29,8 +30,9 @@ async def transcribe_audio(
         with open(filepath, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
-        # Transcribe
-        text = await voice_service.transcribe_audio(filepath)
+        # Transcribe (fallback to legacy for now or update later)
+        from app.services import voice_service as legacy_service
+        text = await legacy_service.transcribe_audio(filepath)
         
         # Cleanup
         if os.path.exists(filepath):
@@ -46,20 +48,19 @@ async def transcribe_audio(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/tts")
-async def text_to_speech(
-    text: str = Body(..., embed=True),
-    voice_id: str = Body("Will", embed=True),
-    user: User = Depends(get_current_user)
-):
-    """Generate speech from text."""
+async def text_to_speech(request: TTSRequest):
+    """Highly advanced professional Indic TTS streaming."""
     try:
-        if not text:
+        if not request.text:
              raise HTTPException(status_code=400, detail="Text is required")
              
-        audio_content = await voice_service.synthesize_speech(text, voice_id)
-        
-        return Response(content=audio_content, media_type="audio/mpeg")
-        
+        return StreamingResponse(
+            indic_voice_service.synthesize_professional_stream(
+                request.text, 
+                voice_id=request.voice_id or "hi_female"
+            ),
+            media_type="audio/mpeg"
+        )
     except Exception as e:
-        logger.error(f"TTS API error: {e}")
-        raise HTTPException(status_code=502, detail=f"TTS Service Error: {str(e)}")
+        logger.error(f"[API ERROR] TTS failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

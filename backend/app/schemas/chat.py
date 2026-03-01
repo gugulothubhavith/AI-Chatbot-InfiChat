@@ -7,6 +7,8 @@ class Message(BaseModel):
     role: str
     content: str
     image: Optional[str] = None
+    file_name: Optional[str] = None
+    file_type: Optional[str] = None
 
 class ChatRequest(BaseModel):
     messages: List[Message]

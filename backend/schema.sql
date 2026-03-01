@@ -20,13 +20,14 @@ CREATE INDEX IF NOT EXISTS ix_users_username ON users (username);
 CREATE INDEX IF NOT EXISTS ix_users_email ON users (email);
 
 -- OTP Table
-CREATE TABLE IF NOT EXISTS otp (
-    id SERIAL PRIMARY KEY,
-    email VARCHAR NOT NULL UNIQUE,
+CREATE TABLE IF NOT EXISTS otp_codes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    email VARCHAR NOT NULL INDEX,
     otp_hash VARCHAR NOT NULL,
     attempts INTEGER DEFAULT 0,
+    password_verified BOOLEAN DEFAULT FALSE,
     expires_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
     created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT (NOW() AT TIME ZONE 'utc')
 );
 
-CREATE INDEX IF NOT EXISTS ix_otp_email ON otp (email);
+CREATE INDEX IF NOT EXISTS ix_otp_email ON otp_codes (email);

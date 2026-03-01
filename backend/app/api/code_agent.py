@@ -3,11 +3,11 @@ from app.core.deps import get_current_user
 from app.models.user import User
 from app.schemas.code import (
     CodeGenerateRequest, CodeRefactorRequest, CodeExplainRequest,
-    CodeTestRequest, CodeExecuteRequest, CodeResponse
+    CodeTestRequest, CodeResponse
 )
 from app.services.code_agent import (
     generate_code, refactor_code, explain_code,
-    generate_tests, execute_code
+    generate_tests
 )
 
 router = APIRouter(prefix="/code", tags=["Code Agent"])
@@ -46,9 +46,3 @@ async def code_test(
 ):
     return await generate_tests(payload, user)
 
-@router.post("/execute", response_model=CodeResponse)
-async def code_execute(
-    payload: CodeExecuteRequest,
-    user: User = Depends(get_current_user)
-):
-    return await execute_code(payload, user)

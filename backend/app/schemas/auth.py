@@ -18,7 +18,6 @@ class AuthResponse(BaseModel):
 
 class UserCreate(BaseModel):
     email: EmailStr
-    username: str
     password: str
 
 class UserLogin(BaseModel):

@@ -144,9 +144,16 @@ async def ingest_document(file: UploadFile):
 
     return {"filename": filename, "chunks": len(chunks), "status": "indexed"}
 
-def query_rag(query_text: str, n_results: int = 10): # Increase initial retrieval count
+def query_rag(query_text: str, n_results: int = 10, filename_filter: str = None): 
+    # Use fallback query if empty
+    if not query_text or not query_text.strip():
+        query_text = "What is this document about?"
+
     # --- REDIS CACHE CHECK ---
-    cache_key = f"rag:cache:{hashlib.md5(f'{query_text}:{n_results}'.encode()).hexdigest()}"
+    cache_string = f'{query_text}:{n_results}'
+    if filename_filter:
+        cache_string += f':{filename_filter}'
+    cache_key = f"rag:cache:{hashlib.md5(cache_string.encode()).hexdigest()}"
     try:
         cached_context = redis_client.get(cache_key)
         if cached_context:
@@ -158,10 +165,14 @@ def query_rag(query_text: str, n_results: int = 10): # Increase initial retrieva
     collection = get_chroma_client()
     
     # 1. Initial Retrieval
-    results = collection.query(
-        query_texts=[query_text],
-        n_results=20 # Retrieve more for reranking
-    )
+    query_params = {
+        "query_texts": [query_text],
+        "n_results": 20
+    }
+    if filename_filter:
+        query_params["where"] = {"source": filename_filter}
+
+    results = collection.query(**query_params)
     
     docs = results['documents'][0]
     metas = results['metadatas'][0]

@@ -23,8 +23,14 @@ def fix_schema():
             print("Adding 'avatar_url' column to users table...")
             connection.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url VARCHAR;"))
             
+            print("Adding 'settings' column to users table...")
+            connection.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS settings JSONB DEFAULT '{}';"))
+            
             print("Adding 'workspace' column to chat_sessions table...")
             connection.execute(text("ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS workspace VARCHAR DEFAULT 'personal';"))
+
+            print("Adding 'password_verified' column to otp_codes table...")
+            connection.execute(text("ALTER TABLE otp_codes ADD COLUMN IF NOT EXISTS password_verified BOOLEAN DEFAULT FALSE;"))
 
             print("Creating 'snippets' table...")
             connection.execute(text("""

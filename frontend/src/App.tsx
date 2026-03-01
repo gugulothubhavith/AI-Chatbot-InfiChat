@@ -3,13 +3,14 @@ import { GoogleOAuthProvider } from "@react-oauth/google";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
 import { ThemeProvider } from "./context/ThemeContext";
 import Login from "./pages/Login";
+import Register from "./pages/Register";
 import Chat from "./pages/Chat";
 import CodeAgent from "./pages/CodeAgent";
 import RAG from "./pages/RAG";
 import ImageGen from "./pages/ImageGen";
-import Settings from "./pages/Settings";
 import Snippets from "./pages/Snippets";
 import About from "./pages/About";
+import SharedChatView from "./pages/SharedChatView";
 import Sidebar from "./components/Sidebar";
 
 // Protected route wrapper
@@ -38,6 +39,8 @@ function App() {
                     <BrowserRouter>
                         <Routes>
                             <Route path="/login" element={<Login />} />
+                            <Route path="/register" element={<Register />} />
+                            <Route path="/share/:token" element={<SharedChatView />} />
 
                             <Route
                                 path="/:sessionId?"
@@ -83,16 +86,7 @@ function App() {
                                 }
                             />
 
-                            <Route
-                                path="/settings"
-                                element={
-                                    <ProtectedRoute>
-                                        <DashboardLayout>
-                                            <Settings />
-                                        </DashboardLayout>
-                                    </ProtectedRoute>
-                                }
-                            />
+
 
                             <Route
                                 path="/snippets"

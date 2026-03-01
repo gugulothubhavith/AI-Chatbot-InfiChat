@@ -12,7 +12,9 @@ interface AuthContextType {
     user: User | null;
     requestOTP: (email: string) => Promise<void>;
     verifyOTP: (email: string, otp: string) => Promise<void>;
+    loginWithPassword: (email: string, password: string) => Promise<{ otp_required: boolean }>;
     loginWithGoogle: (credential: string) => Promise<void>;
+    register: (email: string, password: string) => Promise<void>;
     logout: () => void;
 }
 
@@ -85,6 +87,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await axios.post("/api/auth/request-otp", { email });
     };
 
+    const loginWithPassword = async (email: string, password: string) => {
+        const res = await axios.post("/api/auth/login", { email, password });
+        return res.data; // { otp_required: true, message: "..." }
+    };
+
     const verifyOTP = async (email: string, otp: string) => {
         const res = await axios.post("/api/auth/verify-otp", { email, otp });
         const newToken = res.data.access_token;
@@ -119,6 +126,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         updateAuthHeader(newToken);
     };
 
+    const register = async (email: string, password: string) => {
+        await axios.post("/api/auth/register", { email, password });
+        // NOTE: Registration no longer automatically logs the user in.
+    };
+
     const logout = () => {
         setToken(null);
         setUser(null);
@@ -128,7 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     return (
-        <AuthContext.Provider value={{ token, user, requestOTP, verifyOTP, loginWithGoogle, logout }}>
+        <AuthContext.Provider value={{ token, user, requestOTP, verifyOTP, loginWithPassword, loginWithGoogle, register, logout }}>
             {children}
         </AuthContext.Provider>
     );

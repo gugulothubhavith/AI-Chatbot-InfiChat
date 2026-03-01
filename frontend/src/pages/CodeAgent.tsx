@@ -1,19 +1,20 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Editor from "@monaco-editor/react";
 import { useAuth } from "../hooks/useAuth";
+import { useTheme } from "../context/ThemeContext";
 import axios from "axios";
 import { Button } from "../components/ui/Button";
-import { Play, Code2, Terminal, Loader2, Sparkles } from "lucide-react";
+import { Logo } from "../components/Logo";
+import { Play, Terminal, Loader2, Sparkles } from "lucide-react";
 
 export default function CodeAgentWorkspace() {
   const { token } = useAuth();
-  const [language, setLanguage] = useState("python");
+  const { theme } = useTheme();
   const [code, setCode] = useState("");
   const [output, setOutput] = useState("");
   const [task, setTask] = useState("generate");
   const [loading, setLoading] = useState(false);
   const [ws, setWs] = useState<WebSocket | null>(null);
-  const [inputBuffer, setInputBuffer] = useState("");
   const [useMultiAgent, setUseMultiAgent] = useState(false);
   const [leftWidth, setLeftWidth] = useState(30);
   const [isResizing, setIsResizing] = useState(false);
@@ -65,30 +66,6 @@ export default function CodeAgentWorkspace() {
   }, [isResizing, resize, stopResizing]);
 
   const handleExecute = async () => {
-    // 1. Interactive Execution Mode
-    if (task === "execute") {
-      if (ws) ws.close();
-      setOutput("");
-      setLoading(true);
-
-      const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const wsHost = window.location.hostname;
-      const socket = new WebSocket(`${wsProtocol}//${wsHost}:8000/ws/code/execute`);
-      socket.onopen = () => {
-        setLoading(false);
-        setOutput(">>> Connected to Interactive Session\n");
-        socket.send(JSON.stringify({ code: code, language: language }));
-      };
-      socket.onmessage = (event) => setOutput((prev) => prev + event.data);
-      socket.onclose = () => {
-        setOutput((prev) => prev + "\n>>> Session Closed");
-        setWs(null);
-        setLoading(false);
-      };
-      setWs(socket);
-      return;
-    }
-
     // 2. Multi-Agent Squad Mode (WS Streaming)
     if (useMultiAgent && task === "generate") {
       if (ws) ws.close();
@@ -128,10 +105,10 @@ export default function CodeAgentWorkspace() {
       const endpoint = task === "generate" ? "/api/code/generate" : `/api/code/${task}`;
       const payload =
         task === "generate"
-          ? { language, prompt: code, use_agents: useMultiAgent }
+          ? { prompt: code, use_agents: useMultiAgent }
           : task === "refactor"
-            ? { language, code, goal: "improve" }
-            : { language, code };
+            ? { code, goal: "improve" }
+            : { code };
 
       const res = await axios.post(endpoint, payload, {
         headers: { Authorization: `Bearer ${token}` },
@@ -144,75 +121,49 @@ export default function CodeAgentWorkspace() {
     }
   };
 
-  const handleTerminalInput = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && ws && ws.readyState === WebSocket.OPEN) {
-      const text = inputBuffer + "\n";
-      ws.send(text);
-      setOutput((prev) => prev + text); // Echo locally
-      setInputBuffer("");
-    }
-  };
+
 
   return (
-    <div className="flex-1 flex flex-col h-screen bg-[#0B1120] overflow-hidden">
+    <div className="flex flex-col h-full bg-white dark:bg-[#0B1120] text-gray-900 dark:text-white overflow-hidden transition-colors duration-300">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-gray-800 bg-[#0B1120] flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-lg bg-indigo-600/20 flex items-center justify-center border border-indigo-500/30">
-            <Code2 className="h-6 w-6 text-indigo-400" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-white">Code Agent</h1>
-            <p className="text-xs text-gray-400">AI-powered code generation & execution | Powered by Meta Llama 3.3 70B</p>
-          </div>
+      <div className="flex items-center justify-between px-6 py-4 bg-white/80 dark:bg-[#0B1120]/50 backdrop-blur-md sticky top-0 z-10 border-b border-gray-200 dark:border-gray-800">
+        <div className="flex items-center gap-4">
+          <Logo hideIcon={true} nameSize={22} className="ml-[-8px]" />
+          <div className="h-5 w-px bg-gray-300 dark:bg-gray-700"></div>
+          <h1 className="font-semibold text-gray-900 dark:text-white text-lg tracking-tight">Code Agent</h1>
         </div>
 
         {/* Toolbar */}
         <div className="flex items-center gap-3">
           {task === "generate" && (
-            <label className="flex items-center gap-2 cursor-pointer bg-gray-900 border border-gray-700 px-3 py-2 rounded-lg hover:border-indigo-500 transition-all select-none">
+            <label className="flex items-center gap-2 cursor-pointer bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 px-3 py-2 rounded-lg hover:border-indigo-500 transition-all select-none">
               <input
                 type="checkbox"
                 checked={useMultiAgent}
                 onChange={(e) => setUseMultiAgent(e.target.checked)}
                 className="accent-indigo-500 h-4 w-4"
               />
-              <span className="text-sm text-gray-300">Multi-Agent Squad</span>
+              <span className="text-sm text-gray-700 dark:text-gray-300">Multi-Agent Squad</span>
             </label>
           )}
 
-          <select
-            value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-            className="bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500/50 hover:bg-gray-800 transition-colors cursor-pointer"
-          >
-            {["python", "javascript", "typescript", "java", "cpp", "go", "rust", "php", "bash"].map(
-              (lang) => (
-                <option key={lang} value={lang}>
-                  {lang.charAt(0).toUpperCase() + lang.slice(1)}
-                </option>
-              )
-            )}
-          </select>
 
-          <div className="h-6 w-px bg-gray-800" />
 
           <select
             value={task}
             onChange={(e) => setTask(e.target.value)}
-            className="bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500/50 hover:bg-gray-800 transition-colors cursor-pointer"
+            className="bg-gray-100 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white text-sm rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500/50 hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors cursor-pointer"
           >
             <option value="generate">Generate Code</option>
             <option value="refactor">Refactor / Optimize</option>
             <option value="explain">Explain Code</option>
             <option value="test">Generate Tests</option>
-            <option value="execute">Execute (Interactive)</option>
           </select>
 
           <Button
             onClick={handleExecute}
-            disabled={loading && task !== "execute"} // Allow restarting WS
-            className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-500/20 ml-2"
+            disabled={loading}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-500/20 ml-2 border dark:border-0 border-indigo-700"
           >
             {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4 fill-current" />}
             {loading ? "Running..." : "Run Agent"}
@@ -230,15 +181,14 @@ export default function CodeAgentWorkspace() {
           style={{ width: `${leftWidth}%` }}
           className="flex flex-col border-r border-gray-800"
         >
-          <div className="bg-gray-900/50 px-4 py-2 border-b border-gray-800 text-xs font-mono text-gray-400 flex justify-between items-center whitespace-nowrap overflow-hidden">
-            <span>INPUT ({language})</span>
+          <div className="bg-gray-100 dark:bg-gray-900/50 px-4 py-2 border-b border-gray-200 dark:border-gray-800 text-xs font-mono text-gray-500 dark:text-gray-400 flex justify-between items-center whitespace-nowrap overflow-hidden transition-colors duration-200">
+            <span>INPUT</span>
             <span className="text-gray-600 hidden md:inline">Monaco Editor</span>
           </div>
           <div className="flex-1 relative">
             <Editor
               height="100%"
-              theme="vs-dark"
-              language={language}
+              theme={theme === 'dark' ? "vs-dark" : "light"}
               value={code}
               onChange={(v) => setCode(v || "")}
               options={{
@@ -256,16 +206,16 @@ export default function CodeAgentWorkspace() {
         {/* Resizer Divider */}
         <div
           onMouseDown={startResizing}
-          className={`w-1.5 flex-shrink-0 cursor-col-resize hover:bg-indigo-500/30 transition-colors relative group ${isResizing ? 'bg-indigo-500/50' : 'bg-gray-800/20'}`}
+          className={`w-1.5 flex-shrink-0 cursor-col-resize hover:bg-gray-500/30 transition-colors relative group ${isResizing ? 'bg-gray-500/50' : 'bg-gray-200 dark:bg-gray-800/20'}`}
         >
-          <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-gray-700 group-hover:bg-indigo-400 transition-colors" />
+          <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-gray-300 dark:bg-gray-700 group-hover:bg-gray-400 transition-colors" />
         </div>
 
         {/* Output Panel (Interactive Terminal) */}
-        <div style={{ width: `${100 - leftWidth}%` }} className="flex flex-col bg-[#0f1623]">
-          <div className={`px-4 py-2 border-b border-gray-800 text-xs font-mono flex items-center gap-2 ${ws ? 'bg-indigo-900/20 text-indigo-400' : 'bg-gray-900/50 text-gray-400'}`}>
+        <div style={{ width: `${100 - leftWidth}%` }} className="flex flex-col bg-white dark:bg-[#0f1623] transition-colors duration-200">
+          <div className={`px-4 py-2 border-b border-gray-200 dark:border-gray-800 text-xs font-mono flex items-center gap-2 transition-colors duration-200 ${ws ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400' : 'bg-gray-100 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400'}`}>
             <Terminal className="h-3 w-3" />
-            <span>{task === "execute" ? "INTERACTIVE TERMINAL" : "OUTPUT / CONSOLE"}</span>
+            <span>OUTPUT / CONSOLE</span>
             {ws && <span className="ml-auto text-[10px] uppercase tracking-wider text-green-400 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" /> LIVE</span>}
           </div>
 
@@ -274,32 +224,16 @@ export default function CodeAgentWorkspace() {
             className="flex-1 p-4 font-mono text-sm overflow-auto custom-scrollbar"
           >
             {output ? (
-              <pre className="whitespace-pre-wrap text-emerald-400 break-words">{output}</pre>
+              <pre className="whitespace-pre-wrap text-emerald-600 dark:text-emerald-400 break-words">{output}</pre>
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-gray-600">
+              <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-gray-600">
                 <Sparkles className="h-8 w-8 mb-3 opacity-20" />
                 <p>Output will appear here...</p>
               </div>
             )}
           </div>
 
-          {/* Input Area (Only for Exec mode) */}
-          {task === "execute" && (
-            <div className="px-4 py-3 border-t border-gray-800 bg-[#0f1623]">
-              <div className="flex items-center gap-2">
-                <span className="text-indigo-500 font-bold">{">"}</span>
-                <input
-                  type="text"
-                  value={inputBuffer}
-                  onChange={(e) => setInputBuffer(e.target.value)}
-                  onKeyDown={handleTerminalInput}
-                  placeholder={ws ? "Type input..." : "Connect first..."}
-                  className="flex-1 bg-transparent border-none outline-none text-white font-mono text-sm placeholder-gray-600"
-                  autoComplete="off"
-                />
-              </div>
-            </div>
-          )}
+
         </div>
       </div>
     </div>

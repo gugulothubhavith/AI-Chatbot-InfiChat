@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   postgres:
@@ -14,7 +14,7 @@ services:
       - "5432:5432"
     restart: unless-stopped
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ai -d autoagent" ]
+      test: ["CMD-SHELL", "pg_isready -U ai -d autoagent"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -28,7 +28,7 @@ services:
       - "6379:6379"
     restart: unless-stopped
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -49,7 +49,6 @@ services:
       - ai-network
 
   # Mock/Local LLM services removed in favor of Host Ollama
-
 
   backend:
     build:
@@ -78,7 +77,7 @@ services:
       CODE_LLAMA_13B_URL: "http://ai-code-llama-13b:8000"
       MIXTRAL_URL: "http://ai-mixtral:8000/v1/chat/completions"
       SDXL_URL: "http://host.docker.internal:7860"
-      GOOGLE_CLIENT_ID: "865977900238-r7f30jut8cuk92k66st54293b3glaku8.apps.googleusercontent.com"
+      # GOOGLE_CLIENT_ID removed to use value from .env
       CHROMA_URL: "http://chromadb:8000"
     ports:
       - "8000:8000"
@@ -86,6 +85,7 @@ services:
       - ../backend:/app
       - sandbox_data:/sandbox
       - /var/run/docker.sock:/var/run/docker.sock
+      - C:/Users/gugul/.cache/huggingface/hub:/root/.cache/huggingface/hub
     restart: unless-stopped
     networks:
       - ai-network
@@ -126,7 +126,6 @@ volumes:
   chromadb_data:
   huggingface_models:
   sandbox_data:
-
 
 networks:
   ai-network:

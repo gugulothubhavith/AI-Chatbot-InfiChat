@@ -12,4 +12,5 @@ class OTP(Base):
     otp_hash = Column(String, nullable=False)
     expires_at = Column(DateTime, nullable=False)
     attempts = Column(Integer, default=0)
+    password_verified = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)

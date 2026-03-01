@@ -20,23 +20,6 @@ async def rag_upload(
     print(f"RAG Upload Request: {file.filename} (user: {user.email})")
     res = await ingest_document(file)
     
-    # Inject system message if attached to a conversation
-    if conversation_id and conversation_id != "undefined":
-        try:
-            session = db.query(ChatSession).filter(ChatSession.id == conversation_id, ChatSession.user_id == user.id).first()
-            if session:
-                msg = ChatMessage(
-                    session_id=session.id,
-                    role="system",
-                    content=f"📄 **Knowledge Base Updated**\n\n**File**: `{file.filename}`\n**Status**: {res.get('chunks')} chunks indexed for retrieval."
-                )
-                db.add(msg)
-                db.commit()
-                print(f"Logged upload message to session {conversation_id}")
-        except Exception as e:
-            # Don't fail the upload just because message logging failed
-            print(f"Failed to log system message: {e}")
-            
     return res
 
 @router.post("/query")

@@ -23,8 +23,7 @@ async def list_sessions(
 ):
     sessions = db.query(ChatSession).filter(
         ChatSession.user_id == user.id,
-        ChatSession.workspace == workspace,
-        ChatSession.is_archived == False
+        ChatSession.workspace == workspace
     ).order_by(ChatSession.is_pinned.desc(), ChatSession.updated_at.desc()).all()
     return sessions
 
@@ -67,6 +66,10 @@ async def delete_session(
     session = db.query(ChatSession).filter(ChatSession.id == session_id, ChatSession.user_id == user.id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Cascade delete shared_chats references first to avoid FK violations
+    from sqlalchemy import text
+    db.execute(text("DELETE FROM shared_chats WHERE session_id = :sid"), {"sid": session_id})
     
     db.delete(session)
     db.commit()
@@ -139,6 +142,17 @@ async def chat_stream(
             media_type="text/event-stream",
             headers={"X-Chat-Session-ID": str(session_id)}
         )
+    except ValueError as e:
+        # Handle specific session/auth errors with 400-level codes
+        error_msg = str(e)
+        if "Unauthorized" in error_msg:
+            status_code = 403
+        elif "not found" in error_msg:
+            status_code = 404
+        else:
+            status_code = 400
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=status_code, content={"detail": error_msg})
     except Exception as e:
         import traceback
         error_trace = traceback.format_exc()
@@ -164,3 +178,100 @@ async def export_data(
 ):
     data = export_user_chat_history(user.id, db)
     return data
+
+@router.post("/sessions/{session_id}/share")
+async def share_session(
+    session_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    session = db.query(ChatSession).filter(ChatSession.id == session_id, ChatSession.user_id == user.id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    # Check if already shared
+    existing_share = db.query(SharedChat).filter(SharedChat.session_id == session_id).first()
+    if existing_share:
+        return {"share_token": existing_share.share_token}
+
+    # Create snapshot
+    messages = db.query(ChatMessage).filter(ChatMessage.session_id == session_id).order_by(ChatMessage.created_at.asc()).all()
+    snapshot = [
+        {"role": m.role, "content": m.content, "created_at": m.created_at.isoformat()}
+        for m in messages
+    ]
+    
+    shared = SharedChat(
+        session_id=session.id,
+        snapshot_json=snapshot
+    )
+    db.add(shared)
+    db.commit()
+    db.refresh(shared)
+    
+    return {"share_token": shared.share_token}
+
+@router.get("/shared")
+async def list_shared_chats(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """List all chats shared by the user."""
+    shared = db.query(SharedChat).join(ChatSession).filter(ChatSession.user_id == user.id).all()
+    return [
+        {
+            "token": s.share_token,
+            "title": s.session.title,
+            "created_at": s.created_at.isoformat(),
+            "session_id": str(s.session_id)
+        }
+        for s in shared
+    ]
+
+@router.delete("/shared/{token}")
+async def unshare_chat(
+    token: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """Remove a shared link."""
+    shared = db.query(SharedChat).join(ChatSession).filter(
+        SharedChat.share_token == token,
+        ChatSession.user_id == user.id
+    ).first()
+    
+    if not shared:
+        raise HTTPException(status_code=404, detail="Shared link not found")
+        
+    db.delete(shared)
+    db.commit()
+    return {"status": "success"}
+
+@router.get("/archived")
+async def list_archived_sessions(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user)
+):
+    """List all archived sessions."""
+    sessions = db.query(ChatSession).filter(
+        ChatSession.user_id == user.id,
+        ChatSession.is_archived == True
+    ).order_by(ChatSession.updated_at.desc()).all()
+    return sessions
+
+@router.get("/shared/{token}")
+async def get_shared_chat(
+    token: str,
+    db: Session = Depends(get_db)
+):
+    shared = db.query(SharedChat).filter(SharedChat.share_token == token).first()
+    if not shared:
+        raise HTTPException(status_code=404, detail="Shared chat not found")
+    
+    session = db.query(ChatSession).filter(ChatSession.id == shared.session_id).first()
+    
+    return {
+        "title": session.title if session else "Shared Chat",
+        "messages": shared.snapshot_json,
+        "created_at": shared.created_at.isoformat()
+    }

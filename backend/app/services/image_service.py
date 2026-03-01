@@ -1,112 +1,99 @@
-import requests
 import base64
 import os
 import logging
-from io import BytesIO
-from PIL import Image
-import httpx
 import urllib.parse
+from io import BytesIO
+from PIL import Image, ImageDraw, ImageFont
+import httpx
 from app.core.config import settings
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
+
 async def generate_image(prompt: str, user: User) -> dict:
-    """Generate image using Pollinations (default) or SDXL."""
-    
-    # 1. Try Pollinations.ai if API Key is present
-    if settings.POLLINATIONS_API_KEY:
-        try:
-            prompt_encoded = urllib.parse.quote(prompt)
-            logger.info(f"Generating image via Pollinations (Model: {settings.POLLINATIONS_MODEL})...")
-            # Pollinations doesn't always strictly require the key in the URL, but we use it for priority
-            url = f"https://image.pollinations.ai/prompt/{prompt_encoded}?model={settings.POLLINATIONS_MODEL}&seed={os.urandom(4).hex()}&width=1024&height=1024&nologo=true"
-            
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(url)
-                response.raise_for_status()
-                
-                # Pollinations returns the image binary directly
+    """Generate image using Pollinations (default), SDXL, or mock fallback."""
+
+    # 1. Try Pollinations.ai
+    try:
+        prompt_encoded = urllib.parse.quote(prompt)
+        seed = int.from_bytes(os.urandom(4), "big")
+        model = getattr(settings, "POLLINATIONS_MODEL", "flux")
+        url = (
+            f"https://image.pollinations.ai/prompt/{prompt_encoded}"
+            f"?model={model}&seed={seed}&width=1024&height=1024&nologo=true"
+        )
+        logger.info(f"Generating image via Pollinations (model={model})...")
+
+        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+            response = await client.get(url)
+            if response.status_code == 200:
                 image_base64 = base64.b64encode(response.content).decode()
                 return {
                     "status": "success",
                     "image_url": f"data:image/png;base64,{image_base64}",
-                    "provider": "pollinations"
+                    "provider": "pollinations",
                 }
-        except Exception as e:
-            logger.error(f"Pollinations failed: {e}. Falling back to SDXL/Mock...")
+            else:
+                logger.warning(f"Pollinations returned status {response.status_code}. Falling back...")
+    except Exception as e:
+        logger.warning(f"Pollinations failed: {e}. Falling back...")
 
     # 2. Try Local/External SDXL
-    try:
-        if settings.SDXL_URL:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+    sdxl_url = getattr(settings, "SDXL_URL", None)
+    if sdxl_url:
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(
-                    f"{settings.SDXL_URL}/api/generate",
+                    f"{sdxl_url}/api/generate",
                     json={
                         "prompt": prompt,
                         "negative_prompt": "blurry, low quality, distorted",
                         "steps": 25,
-                    }
+                    },
                 )
                 if response.status_code == 200:
                     result = response.json()
-                    image_base64 = f"data:image/png;base64,{result['image']}"
                     return {
                         "status": "success",
-                        "image_url": image_base64,
-                        "provider": "sdxl"
+                        "image_url": f"data:image/png;base64,{result['image']}",
+                        "provider": "sdxl",
                     }
+        except Exception as e:
+            logger.warning(f"SDXL connection failed: {e}. Using mock fallback...")
+
+    # 3. Mock fallback — generate a placeholder image using PIL
+    logger.info("Using mock image fallback (PIL-generated placeholder).")
+    try:
+        width, height = 1024, 1024
+        img = Image.new("RGB", (width, height), color=(15, 23, 42))  # dark blue-gray
+        draw = ImageDraw.Draw(img)
+
+        # Gradient-style background stripes
+        for i in range(0, height, 4):
+            alpha = int(255 * (i / height) * 0.3)
+            draw.line([(0, i), (width, i)], fill=(30 + alpha // 4, 40 + alpha // 3, 80 + alpha // 2))
+
+        # Border frame
+        draw.rectangle([20, 20, width - 20, height - 20], outline=(99, 102, 241), width=3)
+
+        # Label text
+        label = "Image Generation Offline"
+        draw.text((width // 2, height // 2 - 40), label, fill=(156, 163, 175), anchor="mm")
+        prompt_short = (prompt[:60] + "...") if len(prompt) > 60 else prompt
+        draw.text((width // 2, height // 2 + 20), f'"{prompt_short}"', fill=(209, 213, 219), anchor="mm")
+        draw.text((width // 2, height // 2 + 80), "Pollinations.ai unreachable", fill=(99, 102, 241), anchor="mm")
+
+        buffered = BytesIO()
+        img.save(buffered, format="PNG")
+        img_b64 = base64.b64encode(buffered.getvalue()).decode()
+
+        return {
+            "status": "success",
+            "image_url": f"data:image/png;base64,{img_b64}",
+            "provider": "mock",
+            "warning": "Image generation service unreachable. Showing placeholder.",
+        }
     except Exception as e:
-        logger.warning(f"SDXL connection failed: {e}")
-    
-    except (requests.exceptions.Timeout, requests.exceptions.ConnectionError, requests.exceptions.RequestException) as e:
-        print(f"WARNING: Ext. Image Gen failed ({e}), using MOCK FALLBACK")
-        print("RETURNING MOCK IMAGE (Fallback Active)")
-        
-        # MOCK FALLBACK: Generate a real image using PIL
-        try:
-            from PIL import ImageDraw
-            import random
-            
-            # bright red background to be obvious
-            color = (255, 50, 50) 
-            img = Image.new('RGB', (512, 512), color=color)
-            d = ImageDraw.Draw(img)
-            
-            # Draw a big X
-            d.line([(0, 0), (512, 512)], fill=(0, 0, 0), width=10)
-            d.line([(0, 512), (512, 0)], fill=(0, 0, 0), width=10)
-            
-            # Add text
-            text = f"DEMO MODE\n{prompt[:20]}"
-            # draw text relative to center
-            d.text((100, 200), text, fill=(255, 255, 255)) 
-            
-            # Convert to base64
-            buffered = BytesIO()
-            img.save(buffered, format="PNG")
-            img_str = base64.b64encode(buffered.getvalue()).decode()
-            
-            print(f"Mock image created, size: {len(img_str)}")
-            
-            return {
-                "status": "success", 
-                "image_url": f"data:image/png;base64,{img_str}",
-                "seed": 12345,
-                "warning": "Demo Mode: External AI server offline"
-            }
-        except Exception as mock_e:
-            print(f"ERROR: Mock generation failed: {mock_e}")
-            import traceback
-            traceback.print_exc()
-            return {"status": "error", "message": f"Service unavailable: {e}"}
-            
-            return {
-                "status": "success", 
-                "image_url": f"data:image/png;base64,{img_str}",
-                "seed": 12345,
-                "warning": "Demo Mode: External AI server offline"
-            }
-        except Exception as mock_e:
-            logger.error(f"Mock generation failed: {mock_e}")
-            return {"status": "error", "message": f"Service unavailable: {e}"}
+        logger.error(f"Mock image generation failed: {e}")
+        return {"status": "error", "message": "Image generation failed. Please try again later."}

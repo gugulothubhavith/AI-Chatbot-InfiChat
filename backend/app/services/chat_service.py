@@ -3,7 +3,6 @@ from app.models.user import User
 from app.models.chat import ChatSession, ChatMessage
 from app.services.llm_router import call_llm
 from app.services.rag_service import query_rag
-from app.services.research_service import perform_web_research
 from app.services.memory_service import get_relevant_memories, extract_and_store_memories
 from fastapi import BackgroundTasks
 from sqlalchemy.orm import Session
@@ -48,13 +47,28 @@ async def process_chat(payload: ChatRequest, user: User, db: Session, background
         db.refresh(session)
         session_id = session.id
     else:
+        logger.info(f"Looking up session: session_id={session_id} (type={type(session_id)}), user_id={user.id} (type={type(user.id)})")
         session = db.query(ChatSession).filter(ChatSession.id == session_id, ChatSession.user_id == user.id).first()
         if not session:
-            raise Exception("Unauthorized or invalid session")
+            # Check if it exists AT ALL in the DB to distinguish between 'not found' and 'unauthorized'
+            exists = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+            if exists:
+                logger.error(f"UNAUTHORIZED ACCESS ATTEMPT: User {user.id} tried to access session {session_id} owned by {exists.user_id}")
+                raise ValueError("Unauthorized: You do not own this session")
+            else:
+                logger.warning(f"Session {session_id} not found in database for user {user.id}")
+                raise ValueError("Session not found")
 
     # 2. Save User Message
     last_msg = payload.messages[-1]
-    db_user_msg = ChatMessage(session_id=session_id, role="user", content=last_msg.content, image_url=last_msg.image)
+    db_user_msg = ChatMessage(
+        session_id=session_id, 
+        role="user", 
+        content=last_msg.content, 
+        image_url=last_msg.image,
+        file_name=last_msg.file_name,
+        file_type=last_msg.file_type
+    )
     db.add(db_user_msg)
     
     # 3. Auto-Title if needed
@@ -73,27 +87,7 @@ async def process_chat(payload: ChatRequest, user: User, db: Session, background
     except Exception as e:
         logger.warning(f"Failed to push user message to Redis: {e}")
 
-    # 4. Handle Web Search
-    if payload.web_search:
-        logger.info(f"Web Search requested for: {last_msg.content}")
-        try:
-            research_result = await perform_web_research(last_msg.content)
-        except Exception as e:
-            logger.error(f"Web Research Crash: {e}", exc_info=True)
-            research_result = f"Click the research button again. (System Error: {str(e)})"
-
-        # Save research result as assistant message
-        db_assistant_msg = ChatMessage(session_id=session_id, role="assistant", content=research_result)
-        db.add(db_assistant_msg)
-        db.commit()
-        
-        if stream:
-            async def research_gen():
-                # Yield the entire result as one chunk (or split if needed, but one is fine for text)
-                yield research_result
-            return research_gen(), session_id
-            
-        return ChatResponse(role="assistant", content=research_result), session_id
+    # (Web search feature removed)
 
     # 5. Build full context for LLM (Redis first, DB fallback)
     messages = []
@@ -134,10 +128,11 @@ async def process_chat(payload: ChatRequest, user: User, db: Session, background
     
     # 6. RAG Integration
     try:
-        if payload.use_rag:
-            query = last_msg.content
-            logger.info(f"Querying RAG for: {query[:50]}...")
-            context = query_rag(query)
+        attached_file = getattr(last_msg, 'file_name', None)
+        if payload.use_rag or attached_file:
+            query = last_msg.content or "What is this document about?"
+            logger.info(f"Querying RAG for: {query[:50]}... Filter: {attached_file}")
+            context = query_rag(query, filename_filter=attached_file)
             if context:
                 rag_instructions = (
                     "You are an AI assistant with access to a knowledge base. "
@@ -158,6 +153,21 @@ async def process_chat(payload: ChatRequest, user: User, db: Session, background
     # User Custom System Prompt
     if payload.system_prompt:
         system_messages.append(f"Custom Instruction:\n{payload.system_prompt}")
+
+    # User Personalization from Settings
+    user_settings = user.settings or {}
+    personal_info = []
+    if user_settings.get("nickname"):
+        personal_info.append(f"The user's nickname is: {user_settings.get('nickname')}")
+    if user_settings.get("occupation"):
+        personal_info.append(f"The user's occupation is: {user_settings.get('occupation')}")
+    if user_settings.get("moreAboutYou"):
+        personal_info.append(f"About the user: {user_settings.get('moreAboutYou')}")
+    if user_settings.get("customInstructions"):
+        personal_info.append(f"Custom Instructions: {user_settings.get('customInstructions')}")
+    
+    if personal_info:
+        system_messages.append("User Personalization:\n" + "\n".join(personal_info))
 
     try:
         memories = get_relevant_memories(user.id)
@@ -220,7 +230,9 @@ async def process_chat(payload: ChatRequest, user: User, db: Session, background
                 except Exception as e:
                     logger.warning(f"Failed to push assistant message to Redis: {e}")
             except Exception as e:
-                logger.error(f"Stream Wrapper Critical Failure: {e}")
+                import traceback
+                error_trace = traceback.format_exc()
+                logger.error(f"Stream Wrapper Critical Failure: {e}\n{error_trace}")
                 yield f"\n\n❌ **[System Error]**: {str(e)}"
                 
         return stream_wrapper(), session_id

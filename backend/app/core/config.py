@@ -1,11 +1,11 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import os
-from typing import Optional, List
+from typing import Optional
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_ignore_empty=True, extra="ignore")
 
-    PROJECT_NAME: str = "Self-Hosted AI Platform"
+    PROJECT_NAME: str = "InfiChat"
     SECRET_KEY: str = os.getenv("SECRET_KEY", "dev-secret-key-change-in-prod")
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 10080)) # Default to 7 days
@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     CHROMA_URL: str = "http://ai-chromadb:8000"
     
     # Sandbox
-    SANDBOX_IMAGE: str = "self-hosted-sandbox:latest"
+    SANDBOX_IMAGE: str = "infichat-sandbox:latest"
     SANDBOX_TIMEOUT: int = 30
     SANDBOX_MAX_MEMORY: str = "512M"
     
@@ -51,8 +51,8 @@ class Settings(BaseSettings):
     POLLINATIONS_MODEL: str = os.getenv("POLLINATIONS_MODEL", "flux")
     
     # Gemini / Google AI
-    GOOGLE_API_KEY: Optional[str] = os.getenv("GOOGLE_API_KEY")
-    VISION_MODEL: str = os.getenv("VISION_MODEL", "gemini-3-flash-preview")
+    GOOGLE_API_KEY: Optional[str] = None
+    VISION_MODEL: str = "gemini-1.5-flash"
     
     # Voice (STT & TTS)
     GROQ_STT_API_KEY: Optional[str] = os.getenv("GROQ_STT_API_KEY")
@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     CODER_API_KEY: Optional[str] = os.getenv("CODER_API_KEY")
     CODER_MODEL: str = os.getenv("CODER_MODEL", "deepseek/deepseek-chat")
     REVIEWER_API_KEY: Optional[str] = os.getenv("REVIEWER_API_KEY")
-    REVIEWER_MODEL: str = os.getenv("REVIEWER_MODEL", "gemini-3-flash-preview")
+    REVIEWER_MODEL: str = "gemini-1.5-flash"
     
     # Email SMTP
     SMTP_SERVER: str = "smtp.gmail.com"

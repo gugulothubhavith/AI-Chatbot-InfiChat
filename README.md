@@ -1,116 +1,123 @@
 <p align="center">
-  <img src="cover.png" width="100%" alt="Self-Hosted Generative AI Chatbot Cover">
+  <img src="cover.png" width="100%" alt="InfiChat">
 </p>
 
-# 🤖 Self-Hosted Generative AI Chatbot
+<p align="center">
+  <img src="frontend/dist/app_name.png" height="60" alt="InfiChat">
+</p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
-[![React 18](https://img.shields.io/badge/react-18-61dafb.svg)](https://react.dev/)
-[![Docker Ready](https://img.shields.io/badge/docker-ready-2496ed.svg)](https://www.docker.com/)
+<p align="center">
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT License"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.11-blue.svg" alt="Python 3.11"></a>
+  <a href="https://react.dev/"><img src="https://img.shields.io/badge/react-18-61dafb.svg" alt="React 18"></a>
+  <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/docker-ready-2496ed.svg" alt="Docker Ready"></a>
+  <img src="https://img.shields.io/badge/version-2.0.0-10A37F.svg" alt="Version 2.0.0">
+</p>
 
-> **Your Private, Sovereign AI Institute.**
-> A production-grade, self-hosted platform designed for **total privacy**, **unmatched performance**, and **autonomous problem solving**.
+> **Your Private, Sovereign AI Platform.**
+> A production-grade, fully self-hosted AI chatbot with streaming chat, professional Indic TTS/STT, RAG, and sandboxed code execution — all running locally on your own hardware.
 
 ---
 
 ## 🛡️ Our Mission
-In an era of centralized AI surveillance, we believe **intelligence should be sovereign**. Our mission is to provide individuals and enterprises with the tools to run cutting-edge Generative AI entirely on their own hardware, ensuring complete data ownership and security.
 
-*   **100% Offline Capable**: Run models without an internet connection.
-*   **Zero 3rd Party Tracking**: Your data never leaves your infrastructure.
-*   **Data Residency**: All inference, vector storage, and logs stay local.
+In an era of centralized AI, we believe **intelligence should be sovereign**. InfiChat lets you run cutting-edge Generative AI entirely on your own hardware — no data leaves your network.
+
+- **100% Offline Capable**: Run models without an internet connection using Ollama.
+- **Zero 3rd Party Tracking**: Your conversations, files, and voice data are yours alone.
+- **Data Residency**: All inference, vector storage, and logs stay local.
 
 ---
 
-## 🏗️ Enterprise-Grade Capabilities
-Building on a foundation of security and performance, this platform offers capabilities typically reserved for cloud-scale enterprise solutions:
+## ✨ Core Features
 
-*   **Multi-tenant Authentication**: Robust JWT-based auth with secure registration flows.
-*   **Isolated Docker Sandbox**: A hardened environment where AI agents can write and execute code safely.
-*   **Real-time Web Research**: Grounded answers using live web data via integrated search agents.
-*   **Multimodal Reasoning**: Advanced support for Vision-based tasks and Voice interactions.
+### 💬 Streaming Multi-Model Chat
+
+- **Groq** — Llama 3.3 70B at ~300 tokens/sec
+- **Google Gemini** — Flash 2.0 for vision & multimodal tasks
+- **OpenRouter** — Access DeepSeek V3, Claude, and more
+- **Ollama** — Local models (fully offline)
+
+### 🎙️ Professional Indic TTS / STT
+
+- **4 Premium Voice Profiles** powered by Edge-TTS:
+  - 🔊 **Professional - English (Male)** — `en-IN-PrabhatNeural`
+  - 🔊 **Corporate - Hindi (Female)** — `hi-IN-SwaraNeural`
+  - 🔊 **Empathetic - Telugu (Male)** — `te-IN-MohanNeural`
+  - 🔊 **Alert - Hindi (Fast)** — Hindi @+25% speed
+- **Real-Time MP3 Streaming** — Audio starts in <1 second
+- **Whisper STT** — Voice-to-text transcription (local, via Faster Whisper)
+- Native text normalization: Lakhs/Crores, ₹ currency, Indian abbreviations
+
+### 📚 RAG — Talk to Your Documents
+
+- Upload **PDF, DOCX, or TXT** files to your personal Knowledge Base
+- **Semantic search** via ChromaDB + sentence transformers
+- Context-aware responses grounded in your documents
+
+### 🤖 Sandboxed Code Agent
+
+- AI writes, runs, and debugs Python code in a **hardened Docker container**
+- Real-time output streaming via WebSocket
+
+### � Authentication & Accounts
+
+- **Email + OTP** two-factor authentication
+- **Google OAuth 2.0** single sign-on
+- JWT-based sessions with password management
+- PII scrubbing, session archiving, and shared chat links
+
+### 🖼️ Image Generation
+
+- Stable Diffusion XL via Pollinations / local SDXL
 
 ---
 
 ## ⚡ Quick Start (Windows)
-**Get up and running in minutes with our automated setup script:**
 
 ```powershell
-# Run the setup script in PowerShell
+# 1. Clone the repository
+git clone https://github.com/gugulothubhavith/Self-Hosted-Generative-AI-Chatbot.git
+cd Self-Hosted-Generative-AI-Chatbot
+
+# 2. Run the automated setup
 .\setup_windows.ps1
 ```
 
-**This script will automatically:**
-1.  Verify system requirements (Nvidia GPU, Docker, Python).
-2.  Configure your environment variables and encryption keys.
-3.  Build the Backend, Frontend, and Sandbox containers.
-4.  Launch the full stack via Docker Compose.
-5.  Open the UI at `http://localhost:5173`.
+**The script will automatically:**
+
+1. Verify system requirements (Docker, Python 3.11+)
+2. Configure your `.env` file with API keys
+3. Build and launch all Docker containers
+4. Open the UI at `http://localhost:5173`
 
 ---
 
-## ✨ Core Features & Integrations
+## 🗝️ API Keys Required
 
-The system integrates best-in-class models and APIs to deliver a premium user experience.
-
-| Feature | Provider / Model | Website (Get API Key) | Description |
-| :--- | :--- | :--- | :--- |
-| **⚡ Fast Chat** | **Groq** (Llama 3.3 70B) | [groq.com](https://groq.com) | Ultra-low latency chat (~300 tokens/s). |
-| **👀 Vision** | **Google Gemini** (Flash 2.0) | [aistudio.google.com](https://aistudio.google.com) | Image analysis and multi-modal reasoning. |
-| **🎨 Images** | **Pollinations** (Stable Diffusion) | [pollinations.ai](https://pollinations.ai) | Generates images from text natively. |
-| **👨‍💻 Coding** | **OpenRouter** (DeepSeek V3) | [openrouter.ai](https://openrouter.ai) | Access to world-class coding models. |
-| **🏠 Local** | **Ollama** (Llama 3 / Mistral) | [ollama.com](https://ollama.com) | Run models entirely offline on your hardware. |
-
-### 🧠 Intelligent Agent Swarm
-Our "Agentic Workflow" goes beyond simple Q&A by delegating tasks to specialized AI experts:
-*   **Planner Agent**: Decomposes complex user requests into actionable steps.
-*   **Coder Agent**: Writes, executes, and debugs code within the secure Docker sandbox.
-*   **Research Agent**: Scours the web for real-time information to eliminate hallucinations.
-*   **Reviewer Agent**: Critiques output and ensures safety/quality before presentation.
-
-### 📚 Advanced RAG (Talk to Your Data)
-*   **Multi-Format Ingestion**: Drag & drop PDF, DOCX, or TXT files.
-*   **Neural Retrieval**: Deep semantic search using `ChromaDB` and `BGE-Large` embeddings.
-*   **Interactive Knowledge**: Ask questions about your documents with precise source citations.
-
-### � Privacy & Security Vault
-*   **PII Scrubbing**: Automatically redacts sensitive information (emails, phones) from logs.
-*   **Hardened Sandbox**: Code execution is restricted to an isolated container with no host access.
-*   **Key Rotation**: Rotate database encryption keys to maintain high security standards.
-
----
-
-## 📊 Benchmarks & Performance
-The system is audited using a comprehensive multimodal benchmark suite to measure accuracy, latency, and throughput.
-
-| Module | Metric | Verified Score | Stability |
-| :--- | :--- | :--- | :--- |
-| **🧠 Reasoning** | Accuracy | **10 / 10** | 100% Keyword Match |
-| **📚 RAG** | Scalability | **9 / 10** | 285 req/s (Cached) |
-| **🤖 Agents** | Coordination | **10 / 10** | CoT Dependency Mapping |
-| **👁️ Vision** | Multimodal | **10 / 10** | OCR & Object Verified |
-| **🔐 Security** | Isolation | **10 / 10** | Hardened Docker Container |
-
-**Overall System Rating: 10 / 10**
+| Provider              | Use Case                   | Get Key                                            |
+| :-------------------- | :------------------------- | :------------------------------------------------- |
+| **Groq**              | Fast chat (Llama 3.3 70B)  | [groq.com](https://groq.com)                       |
+| **Google AI Studio**  | Vision & Gemini models     | [aistudio.google.com](https://aistudio.google.com) |
+| **OpenRouter**        | DeepSeek, Claude, etc.     | [openrouter.ai](https://openrouter.ai)             |
+| **Ollama** (optional) | Fully local/offline models | [ollama.com](https://ollama.com)                   |
 
 ---
 
 ## 🏗️ Architecture
-The platform follows a **Micro-Service Event-Driven Architecture** designed for scalability and modularity.
 
 ```mermaid
 graph TD
-    Client[React 18 Frontend] <-->|WebSocket/HTTP| API[FastAPI Backend]
-    
-    subgraph "AI Orchestration Layer"
+    Client[React 18 Frontend] <-->|HTTP/SSE/WebSocket| API[FastAPI Backend]
+
+    subgraph "AI Orchestration"
         API --> Router{Smart Router}
-        Router -->|Simple Chat| LLM[Ollama / Local LLM]
-        Router -->|Complex Logic| Agents[Agent Swarm]
-        Agents -->|Code Tasks| Sandbox[Isolated Docker Container]
-        Agents -->|Web Search| Search[DuckDuckGo]
+        Router -->|Chat/Stream| LLM[Groq / Gemini / OpenRouter]
+        Router -->|Code Tasks| Sandbox[Isolated Docker Container]
+        Router -->|Voice| TTS[Edge-TTS + Whisper STT]
+        Router -->|Documents| RAG[ChromaDB Vector Search]
     end
-    
+
     subgraph "Persistent Storage"
         API --> DB[(PostgreSQL)]
         API --> Vector[(ChromaDB)]
@@ -122,46 +129,62 @@ graph TD
 
 ## 🛠️ Tech Stack
 
-| Domain | Technology | Use Case |
-| :--- | :--- | :--- |
-| **Frontend** | React 18, Vite, TypeScript | Modern, high-performance UI |
-| **Styling** | Tailwind CSS, Framer Motion | Fluid animations and responsive design |
-| **Backend** | FastAPI (Python 3.11) | High-concurrency async API |
-| **Database** | PostgreSQL & SQLAlchemy | Reliable relational data storage |
-| **Vector Store** | ChromaDB | High-performance semantic search |
-| **Sandboxing** | Docker | Secure, isolated tool execution |
-| **Audio** | Faster Whisper | Low-latency local transcription |
+| Domain           | Technology                              |
+| :--------------- | :-------------------------------------- |
+| **Frontend**     | React 18, Vite, TypeScript              |
+| **Styling**      | Vanilla CSS, Lucide icons               |
+| **Backend**      | FastAPI (Python 3.11), Uvicorn          |
+| **Database**     | PostgreSQL + SQLAlchemy                 |
+| **Vector Store** | ChromaDB + Sentence Transformers        |
+| **Cache**        | Redis                                   |
+| **TTS**          | Microsoft Edge-TTS (Professional Indic) |
+| **STT**          | Faster Whisper (local, offline)         |
+| **Sandboxing**   | Docker (isolated container)             |
+| **Auth**         | JWT + Google OAuth 2.0 + OTP            |
 
 ---
 
-## 🔧 Configuration
-The system is managed via a comprehensive `.env` file, allowing you to tune performance and privacy:
+## 🔧 Configuration (`.env`)
 
 ```ini
-# --- AI Configuration ---
-MODEL_TIER=high                # low (7B), medium (13B), high (70B)
-OLLAMA_BASE_URL=http://host.docker.internal:11434
+# LLM API Keys
+GROQ_API_KEY=gsk_...
+GOOGLE_API_KEY=AIza...
+OPENROUTER_API_KEY=sk-...
 
-# --- Privacy ---
-ENABLE_PII_SCRUBBING=true      # Auto-redact sensitive info
-ENCRYPTION_KEY_ROTATION=30     # Rotate keys every 30 days
+# Database
+DATABASE_URL=postgresql://ai:ai_pass@localhost:5432/autoagent
+REDIS_URL=redis://localhost:6379/0
 
-# --- Security ---
-ALLOW_REGISTRATION=false       # restrict to internal use
-JWT_SECRET=****************    # Secure token signing
+# Auth
+SECRET_KEY=your-secret-key-here
+GOOGLE_CLIENT_ID=...
+
+# Privacy
+ENABLE_PII_SCRUBBING=true
 ```
 
 ---
 
-## 🤝 Contribution & License
-This project is open-source under the **MIT License**. We welcome contributions from the community to help decentralize AI.
+## 📡 API Documentation
 
-1.  **Fork** the repository.
-2.  **Clone** your fork (`git clone ...`).
-3.  Create a **Feature Branch** (`git checkout -b feature/AmazingFeature`).
-4.  **Commit** your changes.
-5.  **Push** and open a **Pull Request**.
+Access the full interactive API docs (Swagger UI) at:
+
+- **`http://localhost:8000/docs`** — InfiChat API v2.0.0
+
+Route groups include: Auth, OAuth, Chat, Voice, RAG, Code Agent, Image, Snippets, Settings, Admin.
 
 ---
 
-*Built with ❤️ for the Open Source AI Community.*
+## 🤝 Contributing
+
+This project is open-source under the **MIT License**.
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes
+4. Push and open a Pull Request
+
+---
+
+_Built with ❤️ for the Open Source AI Community._

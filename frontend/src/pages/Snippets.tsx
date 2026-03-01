@@ -135,7 +135,7 @@ export default function Snippets() {
                                     <div>
                                         <h3 className="font-semibold text-lg">{snippet.title}</h3>
                                         <div className="flex flex-wrap gap-1 mt-2">
-                                            <span className="text-xs px-2 py-0.5 rounded bg-indigo-100 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-mono">
+                                            <span className="text-xs px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 font-mono">
                                                 {snippet.language}
                                             </span>
                                             {snippet.tags.map(tag => (

@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
 # Install Python dependencies
 COPY requirements.txt .
 RUN pip install --upgrade pip && \
+    pip install kokoro-onnx soundfile && \
     pip install --no-cache-dir --default-timeout=1000 -r requirements.txt
 
 # Copy application code being handled by volume mount in dev, 
@@ -22,4 +23,7 @@ COPY . .
 # Environment variables
 ENV PYTHONPATH=/app
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-exclude", "*.pyc", "--reload-exclude", "*__pycache__*", "--reload-exclude", "uploads/*", "--reload-exclude", "data/*", "--reload-exclude", "*.log", "--reload-exclude", ".git/*", "--reload-exclude", ".pytest_cache/*", "--reload-exclude", ".vscode/*", "--reload-exclude", "*.sqlite", "--reload-exclude", "*.tmp"]
+# Download Kokoro ONNX weights and voices before starting the server
+RUN python app/models/kokoro_setup.py
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-exclude", "*.pyc", "--reload-exclude", "*__pycache__*", "--reload-exclude", "uploads/*", "--reload-exclude", "data/*", "--reload-exclude", "*.log", "--reload-exclude", ".git/*", "--reload-exclude", ".pytest_cache/*", "--reload-exclude", ".vscode/*", "--reload-exclude", "*.sqlite", "--reload-exclude", "*.tmp", "--reload-exclude", "venv/*", "--reload-exclude", "node_modules/*", "--reload-exclude", ".idea/*"]

@@ -13,11 +13,13 @@
 
   body {
     @apply bg-gray-50 text-gray-900 antialiased;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    font-feature-settings:
+      "rlig" 1,
+      "calt" 1;
   }
 
   .dark body {
-    @apply bg-[#0B1120] text-gray-100;
+    @apply bg-[#0B0B0B] text-gray-100;
   }
 }
 
