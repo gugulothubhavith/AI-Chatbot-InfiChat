@@ -1052,3 +1052,16 @@ InfiChat is built on the shoulders of incredible open-source projects:
   <a href="https://github.com/gugulothubhavith/Self-Hosted-Generative-AI-Chatbot/issues">💡 Request a Feature</a> •
   <a href="https://github.com/gugulothubhavith/Self-Hosted-Generative-AI-Chatbot/discussions">💬 Join Discussions</a>
 </p>
+
+---
+
+## 📞 Contact
+
+- **LinkedIn:** [https://www.linkedin.com/in/gugulothubhavith](https://www.linkedin.com/in/gugulothubhavith)
+- **GitHub:** [https://github.com/gugulothubhavith](https://github.com/gugulothubhavith)
+
+<br/>
+<div align="center">
+  <b>Designed & Developed by Gugulothu Bhavith</b> <br>
+  <i>Empowering Business Through Data</i>
+</div>
