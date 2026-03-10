@@ -1063,5 +1063,5 @@ InfiChat is built on the shoulders of incredible open-source projects:
 <br/>
 <div align="center">
   <b>Designed & Developed by Gugulothu Bhavith</b> <br>
-  <i>Empowering Business Through Data</i>
+  <i>Empowering Autonomy Through Sovereign AI</i>
 </div>
