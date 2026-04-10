@@ -1,5 +1,5 @@
 <p align="center">
-  <video muted autoplay loop playsinline src="Demo.mp4" width="100%" poster="cover.png"></video>
+  <video muted autoplay loop playsinline src="https://github.com/gugulothubhavith/AI-Chatbot-InfiChat/raw/main/Demo.mp4" width="100%"></video>
 </p>
 
 <p align="center">

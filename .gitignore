@@ -101,9 +101,6 @@ Logo/
 *.png
 *.mp4
 
-# Voice and TTS Assets/Service
-.TTS and STT/
-
 # Build Scripts & Documentation
 build_macos.sh
 build_windows.bat
