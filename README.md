@@ -4,6 +4,8 @@
 
 <p align="center">
   <img src="Demo.gif" width="90%" alt="InfiChat Demo" />
+  <br>
+  <em>▶️ InfiChat Platform Demonstration — Real-Time Streaming & Code Execution</em>
 </p>
 
 <p align="center">
@@ -125,7 +127,7 @@ InfiChat features a best-in-class voice pipeline tailored for multilingual India
 | 🔊 **Professional English** | `en-IN` | `PrabhatNeural` | Authoritative, broadcast-quality |
 | 🔊 **Corporate Hindi**      | `hi-IN` | `SwaraNeural`   | Warm, professional female        |
 | 🔊 **Empathetic Telugu**    | `te-IN` | `MohanNeural`   | Calm, reassuring male            |
-| 🔊 **Alert Hindi (Fast)**   | `hi-IN` | Swara @+25%     | Rapid, notification-style        |
+| 🔊 **Alert Hindi (Fast)**   | `hi-IN` | `Swara`     | Rapid, notification-style        |
 
 **Key Capabilities:**
 
