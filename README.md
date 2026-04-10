@@ -1,9 +1,9 @@
 <p align="center">
-  <video muted autoplay loop playsinline src="https://github.com/gugulothubhavith/AI-Chatbot-InfiChat/raw/main/Demo.mp4" width="100%"></video>
+  <img src="frontend/public/app_name.png" height="60" alt="InfiChat Logo">
 </p>
 
 <p align="center">
-  <img src="frontend/public/app_name.png" height="60" alt="InfiChat Logo">
+  <video muted autoplay loop playsinline src="https://github.com/gugulothubhavith/AI-Chatbot-InfiChat/raw/main/Demo.mp4" width="100%"></video>
 </p>
 
 <p align="center">
