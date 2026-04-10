@@ -5,12 +5,72 @@
   <meta charset="UTF-8" />
   <link rel="icon" type="image/png" href="/logo.png" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="InfiChat — A self-hosted, privacy-first generative AI chatbot platform with multi-model support, voice, vision, and RAG capabilities." />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' ws: wss: http: https:; media-src 'self' blob:; frame-src https://accounts.google.com;" />
   <title>InfiChat</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script>
+    try {
+      var localTheme = localStorage.getItem('theme');
+      var isDark = localTheme === 'dark' || (localTheme !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      if (isDark) document.documentElement.classList.add('dark');
+      else document.documentElement.classList.remove('dark');
+      document.addEventListener('DOMContentLoaded', function() {
+        document.body.style.background = isDark ? '#171717' : '#f9fafb';
+      });
+    } catch (e) {}
+  </script>
+  <script type="module" src="/src/main.tsx"></script>
+  <style>
+    /* Splash screen to prevent white flash */
+    #splash-loader {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #171717;
+      z-index: 99999;
+      transition: opacity 0.3s ease;
+    }
+    .dark #splash-loader { background: #171717; }
+    html:not(.dark) #splash-loader { background: #f9fafb; }
+    #splash-loader .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid rgba(255,255,255,0.1);
+      border-top-color: #06b6d4;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    html:not(.dark) #splash-loader .spinner {
+      border-color: rgba(0,0,0,0.08);
+      border-top-color: #0891b2;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
 </head>
 
-<body>
+<body style="margin: 0;">
+  <div id="splash-loader"><div class="spinner"></div></div>
   <div id="root"></div>
-  <script type="module" src="/src/main.tsx"></script>
+  <script>
+    // Remove splash once React has mounted
+    const observer = new MutationObserver(() => {
+      const root = document.getElementById('root');
+      if (root && root.children.length > 0) {
+        const splash = document.getElementById('splash-loader');
+        if (splash) {
+          splash.style.opacity = '0';
+          setTimeout(() => splash.remove(), 300);
+        }
+        observer.disconnect();
+      }
+    });
+    observer.observe(document.getElementById('root'), { childList: true });
+  </script>
 </body>
 
 </html>

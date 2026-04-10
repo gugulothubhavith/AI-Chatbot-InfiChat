@@ -30,7 +30,15 @@ backend/logs/
 node_modules/
 frontend/node_modules/
 frontend/dist/
+frontend/build_output/
+frontend/dist_electron/
+frontend/electron/
+frontend/.vite/
 frontend/.env
+admin-frontend/node_modules/
+admin-frontend/dist/
+admin-frontend/.env
+admin-frontend/.dockerignore
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -90,6 +98,22 @@ TTS and STT/
 
 # Proprietary assets
 Logo/
+*.png
+*.mp4
 
 # Voice and TTS Assets/Service
-TTS and STT/
+.TTS and STT/
+
+# Build Scripts & Documentation
+build_macos.sh
+build_windows.bat
+AI CHATBOT.pptx
+Self-Hosted Generative AI Chatbot Documentation.pdf
+
+# Secrets (Just in case)
+*.pem
+*.cert
+*.key
+secrets.json
+credentials.json
+client_secret.json

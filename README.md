@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="cover.png" width="100%" alt="InfiChat — Self-Hosted Generative AI Platform">
+  <video muted autoplay loop playsinline src="Demo.mp4" width="100%" poster="cover.png"></video>
 </p>
 
 <p align="center">
@@ -18,11 +18,11 @@
 </p>
 
 <p align="center">
-  <strong>Your Private, Sovereign AI Platform — No Cloud. No Compromise. No Data Leaks.</strong>
+  <strong>The Ultimate AI Command Center — All Your Intelligence, Unified.</strong>
 </p>
 
 <p align="center">
-  A production-grade, fully self-hosted generative AI chatbot featuring real-time streaming chat, professional Indic TTS/STT, Retrieval-Augmented Generation (RAG), sandboxed Python code execution, and enterprise-level authentication — all running on your own hardware.
+  A production-grade generative AI chatbot featuring real-time streaming chat, professional Indic TTS/STT, Retrieval-Augmented Generation (RAG), sandboxed Python code execution, and enterprise-level authentication.
 </p>
 
 ---
@@ -78,20 +78,19 @@
 
 ## 🛡️ Our Mission
 
-In an era of centralized AI monopolies, **InfiChat** was built on a single principle: **your intelligence should be sovereign**.
+**InfiChat** was built on a single principle: **combining the world's best AI models into one unified, seamless command center**.
 
-Every major AI provider today collects your conversations, trains on your data, and stores your proprietary information on third-party servers. InfiChat changes that equation entirely.
+Instead of switching between ChatGPT, Claude, and specialized coding models, InfiChat dynamically routes your requests to the optimal AI provider—whether that's Groq for lightning-fast inference, Google Gemini for vision, or NVIDIA NIM for enterprise-grade autonomous coding. 
 
-| Feature                             | Cloud AI (ChatGPT, etc.) | **InfiChat** |
+| Feature                             | Standard Chatbots | **InfiChat Hub** |
 | :---------------------------------- | :----------------------: | :----------: |
-| Your data stays on your device      |            ❌            |      ✅      |
-| Works fully offline                 |            ❌            |      ✅      |
-| No third-party telemetry            |            ❌            |      ✅      |
-| Customizable & self-hostable        |            ❌            |      ✅      |
-| Enterprise data residency compliant |            ❌            |      ✅      |
-| Open Source                         |            ❌            |      ✅      |
+| Multi-Provider Dynamic Routing      |            ❌            |      ✅      |
+| Integrated Multi-Agent Coding       |            ❌            |      ✅      |
+| Embedded Enterprise Architecture    |            ❌            |      ✅      |
+| Transparent RAG & Embeddings        |            ❌            |      ✅      |
+| Hyper-Customizable Orchestration    |            ❌            |      ✅      |
 
-> **InfiChat is designed for developers, enterprises, researchers, and privacy-conscious individuals who refuse to compromise on data sovereignty.**
+> **InfiChat is designed as a production-ready enterprise gateway for professionals who want ChatGPT-level UX powered seamlessly by the best APIs on the market.**
 
 ---
 
@@ -104,9 +103,9 @@ InfiChat's **Smart Router** dynamically routes requests to the optimal LLM provi
 | Provider          | Model                   |     Speed      | Use Case                      |
 | :---------------- | :---------------------- | :------------: | :---------------------------- |
 | **Groq**          | Llama 3.3 70B           |   ~300 tok/s   | General chat, summarization   |
+| **NVIDIA NIM**    | StarCoder2 7B           |   Ultra-fast   | Autonomous multi-agent coding |
 | **Google Gemini** | Flash 2.0               |   Ultra-fast   | Vision, multimodal, long docs |
-| **OpenRouter**    | DeepSeek V3, Claude 3.5 |     Varies     | Specialized tasks, coding     |
-| **Ollama**        | Any GGUF model          | Hardware-bound | Fully offline / air-gapped    |
+| **OpenRouter**    | DeepSeek V3, Claude 3.5 |     Varies     | Specialized cognitive tasks   |
 
 - Real-time **Server-Sent Events (SSE)** streaming with token-by-token output
 - Persistent multi-turn conversation history with session archiving
@@ -165,16 +164,16 @@ Transform your static documents into an interactive, AI-powered knowledge base.
 
 ---
 
-### 🤖 Sandboxed Python Code Agent
+### 🤖 Multi-Agent Sandboxed Python Coding
 
-The AI can write, execute, and iterate on Python code — safely.
+InfiChat utilizes an advanced **Multi-Agent Architecture** powered by NVIDIA NIM to write, review, and execute code autonomously.
 
-- **Hardened Docker container** — zero host system access
-- **Real-time output streaming** via WebSocket — watch code execute live
-- **Auto-debugging loop** — the agent reads runtime errors and self-corrects
-- **Package sandbox** — only whitelisted libraries available inside the container
-- Supports data analysis, visualization (matplotlib), file I/O, and algorithm design
-- Each session runs in an **ephemeral container** — no state persists between runs
+- **Planner Agent** (Llama 3.3): Breaks down complex tasks into manageable steps.
+- **Coder Agent** (NVIDIA StarCoder2): Generates high-quality enterprise code.
+- **Reviewer Agent** (NVIDIA StarCoder2): Audits the generated code before execution.
+- **Hardened Docker container** — zero host system access.
+- **Real-time output streaming** via WebSocket — watch code execute live.
+- **Auto-debugging loop** — the agent reads runtime errors and self-corrects.
 
 ---
 
@@ -231,13 +230,13 @@ graph TD
 
     subgraph "AI Orchestration Layer"
         Router{"🧠 Smart Router"}
-        LLM["☁️ LLM Providers\n(Groq / Gemini / OpenRouter)"]
-        Ollama["🖥️ Ollama\n(Local / Offline)"]
-        TTS["🎙️ Edge-TTS\n(Indic Voices)"]
-        STT["🗣️ Faster Whisper\n(Local STT)"]
-        RAG["📚 ChromaDB RAG\n(Semantic Search)"]
+        LLM["☁️ API Providers\n(Groq / Gemini / OpenRouter)"]
+        NVIDIA["🟢 NVIDIA NIM\n(Multi-Agent Coders)"]
+        TTS["🎙️ Advanced TTS\n(Unreal Speech / Edge)"]
+        STT["🗣️ Whisper STT\n(Groq / Faster Whisper)"]
+        RAG["📚 RAG Pipeline\n(Voyage Embeddings)"]
         Sandbox["🐳 Code Sandbox\n(Isolated Docker)"]
-        ImgGen["🖼️ Image Generation\n(SDXL / Pollinations)"]
+        ImgGen["🖼️ Image Apps\n(HuggingFace Flux)"]
     end
 
     subgraph "Persistent Storage"
@@ -259,7 +258,7 @@ graph TD
     API --> RL --> JWT
     JWT --> Router
     Router --> LLM
-    Router --> Ollama
+    Router --> NVIDIA
     Router --> TTS
     Router --> STT
     Router --> RAG
@@ -331,7 +330,7 @@ FastAPI validates token → applies rate limit → routes to Smart Router
 | Groq SDK                     | Ultra-fast Llama 3.3 70B inference |
 | Google Generative AI         | Gemini Flash 2.0 multimodal        |
 | OpenRouter                   | Gateway to 100+ LLM models         |
-| Ollama                       | Local model runner (GGUF)          |
+| NVIDIA NIM                   | Enterprise Code Generation models  |
 | ChromaDB ≥0.4.22             | Local vector database for RAG      |
 | sentence-transformers ≥2.2.2 | Document embedding model           |
 | faster-whisper ≥0.10.0       | CTranslate2-based local STT        |
@@ -535,9 +534,10 @@ GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxxxxxx
 GOOGLE_REDIRECT_URI=http://localhost:8000/api/oauth/google/callback
 
 # ─────────────────────────────────────────────────────
-#  Ollama (Optional — for offline local models)
+#  NVIDIA NIM & Multi-Agent Keys
 # ─────────────────────────────────────────────────────
-OLLAMA_BASE_URL=http://localhost:11434
+CODER_API_KEY=nvapi-...
+REVIEWER_API_KEY=nvapi-...
 
 # ─────────────────────────────────────────────────────
 #  Feature Flags
@@ -557,71 +557,87 @@ CORS_ORIGINS=http://localhost:5173
 
 ---
 
-## 📁 Project Structure
+## 📁 Topographical Project Analysis
 
-```
+InfiChat is engineered as a true enterprise monorepo. Across its entire footprint, the development ecosystem manages an immense scale of dependencies, assets, and source code. 
+
+### 📊 Scale Metrics (Development Environment)
+| Ecosystem | Primary Purpose | Scale Estimate | Tech Core |
+|:---|:---|:---|:---|
+| **`app/backend/`** | Python ASGI Backend, ORM, & AI Pipelines | ~44,400+ files | FastAPI, SQLAlchemy |
+| **`app/frontend/`** | Main Chat React Client & GUI | ~35,100+ files | Vite, Tailwind |
+| **`app/admin-frontend/`** | Governance & System Admin Portal | ~23,500+ files | React, Recharts |
+*(Note: File limits account for virtual environments, heavy JS dependency trees (`node_modules`), static embeddings, and vectorized model caches utilized during active development).*
+
+### 🗺️ Deep-Dive Monorepo Architecture
+
+```text
 Self-Hosted-Generative-AI-Chatbot/
 │
-├── 📄 README.md                    # This file
-├── 📄 .env.example                 # Environment template
-├── 📄 setup_windows.ps1            # One-click Windows setup
-├── 📄 start_all.bat                # Launch all services
-├── 📄 install_dependencies.bat     # Dependency installer
-│
-├── 🖼️  cover.png                   # Project cover image
-│
-├── 🐍 backend/                     # FastAPI Python backend
+├── 🐍 backend/                     # [Core Intelligence & API Gateway]
+│   │                               # The brain of InfiChat. Handles all routing, orchestration, and DB communication.
+│   │
 │   ├── app/
-│   │   ├── main.py                 # Application entrypoint, lifespan, CORS
-│   │   ├── api/                    # Route handlers (controllers)
-│   │   │   ├── auth.py             # Registration, login, JWT
-│   │   │   ├── oauth.py            # Google OAuth 2.0 flow
-│   │   │   ├── chat.py             # LLM streaming chat endpoints
-│   │   │   ├── voice.py            # TTS and STT endpoints
-│   │   │   ├── rag.py              # Document upload & RAG query
-│   │   │   ├── code_agent.py       # Sandboxed code execution
-│   │   │   ├── image.py            # Image generation
-│   │   │   ├── snippets.py         # Saved code snippets
-│   │   │   ├── settings.py         # User preferences
-│   │   │   └── admin.py            # Admin panel endpoints
-│   │   ├── core/
-│   │   │   ├── config.py           # Pydantic settings management
-│   │   │   └── security.py         # JWT, password hashing
-│   │   ├── database/               # DB connection & session management
-│   │   ├── models/                 # SQLAlchemy ORM models
-│   │   ├── schemas/                # Pydantic request/response schemas
-│   │   └── services/               # Business logic layer
-│   │       ├── llm_service.py      # Multi-provider LLM orchestration
-│   │       ├── tts_service.py      # Edge-TTS voice synthesis
-│   │       ├── stt_service.py      # Faster Whisper transcription
-│   │       ├── rag_service.py      # ChromaDB RAG pipeline
-│   │       ├── code_service.py     # Docker sandbox management
-│   │       └── image_service.py    # Image generation
-│   ├── Dockerfile                  # Backend container definition
-│   └── requirements.txt            # Python dependencies
+│   │   ├── main.py                 # Application entrypoint, dynamic lifespan logic, and CORS origin enforcement
+│   │   ├── api/                    # Route Controllers (Auth, Chat, Voice, RAG, Code Agent, Internal Admin)
+│   │   ├── core/                   # Security Middleware (JWT signing, hashing) and Config State Managers
+│   │   ├── database/               # Asynchronous PostgreSQL connection pooling routines
+│   │   ├── models/                 # SQLAlchemy ORM definitions mapping tables (Users, Chats, Releases)
+│   │   ├── schemas/                # Pydantic v2 data validation schemas ensuring 100% strict I/O
+│   │   └── services/               # Heavily isolated Business Logic Layer:
+│   │       ├── llm_service.py      #   ↳ Intelligent router switching between Groq, Gemini, and Ollama
+│   │       ├── tts_service.py      #   ↳ Concurrent Microsoft Edge-TTS audio stream generation
+│   │       ├── rag_service.py      #   ↳ SentenceTransformer embeddings into ChromaDB vector spaces
+│   │       └── code_service.py     #   ↳ Live socket transmission for isolated Docker script execution
+│   │
+│   ├── Dockerfile                  # Self-contained optimized Python 3.11 container blueprint
+│   ├── requirements.txt            # Strict core dependency locks
+│   └── fix_db_schema.py            # Automated structural migration & table generation script
 │
-├── ⚛️  frontend/                    # React 18 TypeScript frontend
+├── ⚛️  frontend/                    # [Primary User Interface]
+│   │                               # The consumer-facing application offering high-performance streaming chat.
+│   │
 │   ├── src/
-│   │   ├── components/             # Reusable UI components
-│   │   ├── pages/                  # Route-level page components
-│   │   ├── hooks/                  # Custom React hooks
-│   │   ├── services/               # API client layer
-│   │   └── types/                  # TypeScript type definitions
-│   ├── public/                     # Static assets
-│   ├── vite.config.ts              # Vite configuration
-│   └── package.json                # Node.js dependencies
+│   │   ├── components/             # Reusable UI components (Modals, Icons, Chat Bubbles, Sidebar)
+│   │   ├── pages/                  # Top-level Routing Views (Login, Chat Interface, About)
+│   │   ├── hooks/                  # Stateful hooks managing Socket connections and Streaming SSE tokens
+│   │   ├── services/               # Typed Axios interceptors for authenticated API interactions
+│   │   └── types/                  # Rigorous TypeScript type definitions ensuring end-to-end safety
+│   │
+│   ├── public/                     # Static media payloads and PWA manifests
+│   └── vite.config.ts              # Optimizing Vite configuration for lightning-fast HMR builds
 │
-├── ⚛️  admin-frontend/              # Dedicated Admin Dashboard GUI
+├── 🛡️  admin-frontend/              # [Governance Command Center]
+│   │                               # A highly restricted, glassmorphism dashboard built exclusively for Admins.
+│   │
 │   ├── src/
-│   │   ├── components/             # Admin layouts, charts, command palette
-│   │   ├── pages/                  # Dashboard, Governance, Security
-│   │   ├── hooks/                  # Permission & Auth hooks
-│   └── package.json                # Node.js dependencies
+│   │   ├── components/             # Admin-specific components (Data tables, Stat Cards, Confirm Modals)
+│   │   ├── pages/
+│   │   │   ├── Dashboard/          # Live resource telemetry (CPU/Memory hardware visualization)
+│   │   │   ├── ReleaseManagement/  # Automated rollout, deployment history, rollback, and platform version control
+│   │   │   ├── DatabaseControl/    # Direct introspection into PostgreSQL, Redis, and ChromaDB schemas
+│   │   │   └── SystemConfig/       # Core toggle logic (PII Scrubbing, Rate Limits, Signups)
+│   │   └── hooks/                  # Auth Guards enforcing Super-Admin RBAC rules across routes
+│   │
+│   └── package.json                # Sandboxed dependency tree distinct from the main frontend
 │
-├── 🐳 sandbox/                     # Code execution Docker environment
-├── 🔊 TTS and STT/                 # Voice model assets
-├── 🏗️  infra/                       # Infrastructure configuration
-└── 💾 data/                        # Persistent data volumes
+├── 🐳 sandbox/                     # [Isolated Execution Environment]
+│                                   # A completely air-gapped Docker container blueprint. When the Code Agent
+│                                   # spins up Python scripts, they execute harmlessly inside this container void.
+│
+├── 🏗️  infra/                       # [Deployment Architecture]
+│   │                               # Infrastructure-as-code definitions to run the platform anywhere.
+│   ├── docker-compose.yml          # Top-level orchestrator connecting 5 containers (Backend, UI, Admin, DBs)
+│   └── nginx.conf                  # Edge router load-balancing traffic and proxying internal sockets
+│
+├── 🔊 TTS and STT/                 # [Acoustic Intelligence]
+│                                   # Contains proprietary audio branding assets and cached voice recognition models.
+│
+└── 💾 data/                        # [State Persistence Volume]
+                                    # Mapped volumes preventing data loss during container restarts.
+    ├── uploads/                    # Physical storage for user PDFs, DOCX, and TXT knowledge files
+    ├── vectors/                    # Binary storage for ChromaDB spatial embedding collections
+    └── db/                         # PostgreSQL persistent binary schemas
 ```
 
 ---
@@ -871,10 +887,16 @@ LLM responds with grounded, document-cited answer
 
 ---
 
-## 🤖 Code Agent Deep Dive
+## 🤖 Multi-Agent Code Deep Dive
 
 ```
-User sends code request → LLM writes Python code
+User sends code request → Planner breaks it down
+      │
+      ▼
+Coder (NVIDIA NIM) generates Python code
+      │
+      ▼
+Reviewer (NVIDIA NIM) audits for bugs
       │
       ▼
 code_service.py → docker.client.containers.run(

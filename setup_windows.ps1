@@ -133,8 +133,8 @@ Write-Host "`nAI Platform is starting!" -ForegroundColor Green
 Write-Host "Services will be available at:"
 Write-Host "  Main UI:     http://localhost:5173"
 Write-Host "  Admin GUI:   http://localhost:5174"
-Write-Host "  Backend:     http://localhost:8000"
-Write-Host "  Swagger:     http://localhost:8000/docs"
+Write-Host "  Backend:     http://localhost:8080"
+Write-Host "  Swagger:     http://localhost:8080/docs"
 
 # Auto-open all services
 Write-Host "`nOpening application services in your default browser..." -ForegroundColor Cyan
@@ -147,7 +147,7 @@ $backendReady = $false
 
 while ($retryCount -lt $maxRetries) {
     try {
-        $response = Invoke-WebRequest -Uri "http://localhost:8000/health" -UseBasicParsing -ErrorAction SilentlyContinue
+        $response = Invoke-WebRequest -Uri "http://localhost:8080/health" -UseBasicParsing -ErrorAction SilentlyContinue
         if ($response.StatusCode -eq 200) {
             $backendReady = $true
             break
@@ -170,5 +170,5 @@ else {
 Start-Process "http://localhost:5173"       # Main Frontend
 Start-Process "http://localhost:5174"       # Admin GUI
 Start-Sleep -Seconds 1
-Start-Process "http://localhost:8000/docs"  # Swagger UI
+Start-Process "http://localhost:8080/docs"  # Swagger UI
 

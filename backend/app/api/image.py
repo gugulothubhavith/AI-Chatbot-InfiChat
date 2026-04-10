@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from app.core.deps import get_current_user
 from app.models.user import User
@@ -11,6 +11,7 @@ from io import BytesIO
 from PIL import Image, ImageDraw
 
 logger = logging.getLogger(__name__)
+from app.core.security import limiter
 
 router = APIRouter(prefix="/image", tags=["Image"])
 
@@ -41,7 +42,9 @@ def _make_placeholder_image(prompt: str, width: int, height: int, reason: str) -
 
 
 @router.post("/generate")
+@limiter.limit("10/minute")
 async def image_generate(
+    request: Request,
     payload: ImageGenerateRequest,
     user: User = Depends(get_current_user)
 ):

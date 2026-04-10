@@ -6,7 +6,14 @@ export default {
     ],
     darkMode: 'class',
     theme: {
-        extend: {},
+        extend: {
+            fontFamily: {
+                sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+            },
+            transitionDuration: {
+                DEFAULT: '300ms',
+            },
+        },
     },
     plugins: [],
 }

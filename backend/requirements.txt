@@ -1,3 +1,4 @@
+numpy==1.26.4
 fastapi==0.109.2
 uvicorn==0.27.1
 pydantic==2.6.1
@@ -15,8 +16,8 @@ httpx==0.26.0
 chromadb>=0.4.22
 email-validator>=2.1.0
 docker>=7.1.0
-slowapi==0.1.9
-numpy<2.0.0
+slowapi>=0.1.9
+kokoro-onnx>=0.3.0
 sentence-transformers>=2.2.2
 pypdf>=4.0.0
 google-auth
@@ -32,3 +33,7 @@ edge-tts>=6.1.9
 PyJWT==2.8.0
 prometheus_client==0.20.0
 psutil==5.9.8
+cryptography>=42.0.0
+pip-audit>=2.7.2
+python-magic>=0.4.27
+bleach>=6.1.0
