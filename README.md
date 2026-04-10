@@ -1,10 +1,8 @@
 <p align="center">
-  <img src="frontend/public/app_name.png" height="60" alt="InfiChat Logo">
+  <img src="frontend/public/app_name.png" height="70" alt="InfiChat Logo">
 </p>
 
-<p align="center">
-  <video muted autoplay loop playsinline src="https://github.com/gugulothubhavith/AI-Chatbot-InfiChat/raw/main/Demo.mp4" width="100%"></video>
-</p>
+https://github.com/gugulothubhavith/AI-Chatbot-InfiChat/raw/main/Demo.mp4
 
 <p align="center">
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT License"></a>
