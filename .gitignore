@@ -33,6 +33,9 @@ frontend/dist/
 frontend/build_output/
 frontend/dist_electron/
 frontend/electron/
+frontend/build_output/
+frontend/dist_electron/
+frontend/electron/
 frontend/.vite/
 frontend/.env
 admin-frontend/node_modules/
@@ -93,17 +96,28 @@ frontend/src/
 # Core admin frontend source
 admin-frontend/src/
 
-# Voice and TTS Assets/Service
-TTS and STT/
 
-# Proprietary assets
+*.pptx
+*.pdf
+
+# Build Scripts & Documentation
+build_macos.sh
+build_windows.bat
+AI CHATBOT.pptx
+Self-Hosted Generative AI Chatbot Documentation.pdf
+
+# Secrets (Just in case)
+*.pem
+*.cert
+*.key
+secrets.json
+credentials.json
+client_secret.json
+ assets
 Logo/
 *.png
 *.mp4
-*.pptx
-*.pdf
-*.gif
-!Demo.gif
+
 
 # Build Scripts & Documentation
 build_macos.sh

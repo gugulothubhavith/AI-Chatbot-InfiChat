@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "indian-voice-agent"
+version = "1.0.0"
+description = "Indian Conversational Voice AI Agent optimized for TTS output."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "faster-whisper>=1.0.0",
+    "edge-tts>=6.1.9",
+    "sounddevice>=0.4.6",
+    "scipy>=1.10.0",
+    "pygame>=2.5.2",
+    "python-dotenv>=1.0.0"
+]
+
+[project.scripts]
+voice-agent = "main:main"
+voice-agent-cli = "app.cli:main"
+voice-agent-api = "app.http_api:main"
+
+[tool.setuptools]
+packages = ["app"]
