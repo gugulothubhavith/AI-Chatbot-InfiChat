@@ -100,6 +100,9 @@ TTS and STT/
 Logo/
 *.png
 *.mp4
+*.pptx
+*.pdf
+*.gif
 
 # Build Scripts & Documentation
 build_macos.sh

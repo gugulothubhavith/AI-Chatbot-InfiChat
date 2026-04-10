@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <video src="https://raw.githubusercontent.com/gugulothubhavith/AI-Chatbot-InfiChat/main/Demo.mp4" controls muted autoplay loop width="100%"></video>
+  <img src="Demo.gif" width="90%" alt="InfiChat Demo" />
 </p>
 
 <p align="center">
