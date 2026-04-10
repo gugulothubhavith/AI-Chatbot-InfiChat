@@ -103,6 +103,7 @@ Logo/
 *.pptx
 *.pdf
 *.gif
+!Demo.gif
 
 # Build Scripts & Documentation
 build_macos.sh
