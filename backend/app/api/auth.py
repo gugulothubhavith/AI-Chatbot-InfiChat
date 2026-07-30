@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request, Response, UploadFile, File
 from sqlalchemy.orm import Session
 from app.core.deps import get_db, get_current_user
 from app.models.user import User, UserSession
@@ -13,6 +13,7 @@ import base64
 from app.core.config import settings
 from app.core.auth import create_access_token, create_refresh_token, decode_token, verify_token_type, hash_password, verify_password
 from app.core.security import limiter
+from app.core.cookies import set_refresh_cookie, clear_refresh_cookie
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -65,7 +66,7 @@ def request_otp(request: Request, payload: OTPRequest, background_tasks: Backgro
 
 @router.post("/verify-otp", response_model=AuthResponse)
 @limiter.limit("5/minute")
-def verify_otp(request: Request, payload: OTPVerify, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+def verify_otp(request: Request, response: Response, payload: OTPVerify, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """
     Verify OTP and return JWT.
     Enforces password verification if user has a password set.
@@ -207,12 +208,14 @@ def verify_otp(request: Request, payload: OTPVerify, background_tasks: Backgroun
         db.add(new_audit)
         
     db.commit()
-            
+
+    set_refresh_cookie(response, refresh_token)
     return {
-        "access_token": access_token, 
+        "access_token": access_token,
         "refresh_token": refresh_token,
         "token_type": "bearer",
         "user_id": str(user.id),
+        "name": user.username,
         "email": user.email,
         "avatar_url": user.avatar_url,
         "is_new_user": is_new,
@@ -222,7 +225,7 @@ def verify_otp(request: Request, payload: OTPVerify, background_tasks: Backgroun
 
 @router.post("/login")
 @limiter.limit("10/minute")
-def login(request: Request, payload: UserLogin, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+def login(request: Request, response: Response, payload: UserLogin, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """
     Login with email and password. Generates JWT directly if correct. Sends OTP upon failure.
     """
@@ -316,12 +319,14 @@ def login(request: Request, payload: UserLogin, background_tasks: BackgroundTask
             db.add(new_audit)
         
         db.commit()
-        
+
+        set_refresh_cookie(response, refresh_token)
         return {
-            "access_token": access_token, 
+            "access_token": access_token,
             "refresh_token": refresh_token,
             "token_type": "bearer",
             "user_id": str(user.id),
+            "name": user.username,
             "email": user.email,
             "avatar_url": user.avatar_url,
             "is_new_user": False,
@@ -334,32 +339,48 @@ def login(request: Request, payload: UserLogin, background_tasks: BackgroundTask
 
 @router.post("/refresh", response_model=AuthResponse)
 @limiter.limit("10/minute")
-def refresh_token_endpoint(request: Request, payload: TokenRefresh, db: Session = Depends(get_db)):
+def refresh_token_endpoint(request: Request, response: Response, payload: TokenRefresh | None = None, db: Session = Depends(get_db)):
     """
     Refresh access token using a valid refresh token.
     Implements refresh token rotation.
+
+    The refresh token is read from the httpOnly cookie first (the secure path
+    used by Frontend-New). For backward compatibility with the admin/legacy
+    frontends that still send it in the body, we fall back to the JSON payload.
     """
-    token_payload = decode_token(payload.refresh_token)
+    incoming_refresh = request.cookies.get(settings.REFRESH_COOKIE_NAME)
+    if not incoming_refresh and payload is not None:
+        incoming_refresh = payload.refresh_token
+    if not incoming_refresh:
+        raise HTTPException(status_code=401, detail="Missing refresh token")
+
+    token_payload = decode_token(incoming_refresh)
     if not token_payload or not verify_token_type(token_payload, "refresh"):
         raise HTTPException(status_code=401, detail="Invalid refresh token")
-        
+
     user_id = token_payload.get("sub")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid refresh token payload")
-        
+
     # Verify session in DB
-    rf_hash = hash_otp(payload.refresh_token)
+    rf_hash = hash_otp(incoming_refresh)
     session = db.query(UserSession).filter(
         UserSession.refresh_token_hash == rf_hash,
         UserSession.is_active == True
     ).first()
-    
+
     if not session:
         # POTENTIAL REUSE ATTACK! In 10/10 security, we might want to invalidate ALL sessions for this user.
         # For now, just block the refresh.
         raise HTTPException(status_code=401, detail="Refresh token reused or session revoked")
         
-    if session.expires_at < datetime.now(timezone.utc):
+    # expires_at is stored naive on SQLite and aware on Postgres; normalise
+    # before comparing so this rejects rather than raising a TypeError (which
+    # would surface as a 500 and effectively block all refreshes on SQLite).
+    session_expires = session.expires_at
+    if session_expires is not None and session_expires.tzinfo is None:
+        session_expires = session_expires.replace(tzinfo=timezone.utc)
+    if session_expires is not None and session_expires < datetime.now(timezone.utc):
         session.is_active = False
         db.commit()
         raise HTTPException(status_code=401, detail="Refresh token expired")
@@ -395,11 +416,13 @@ def refresh_token_endpoint(request: Request, payload: TokenRefresh, db: Session 
         if admin_prof.role: perms.extend([p.name for p in admin_prof.role.permissions])
         perms.extend([p.name for p in admin_prof.custom_permissions])
         
+    set_refresh_cookie(response, new_refresh_token)
     return {
         "access_token": new_access_token,
         "refresh_token": new_refresh_token,
         "token_type": "bearer",
         "user_id": str(user.id),
+        "name": user.username,
         "email": user.email,
         "avatar_url": user.avatar_url,
         "is_new_user": False,
@@ -408,7 +431,7 @@ def refresh_token_endpoint(request: Request, payload: TokenRefresh, db: Session 
     }
 
 @router.post("/logout")
-def logout(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def logout(response: Response, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """
     Log out and deactivate all active sessions for the current user.
     For 10/10 security, we invalidate all devices.
@@ -421,6 +444,7 @@ def logout(current_user: User = Depends(get_current_user), db: Session = Depends
         db.query(AdminSession).filter(AdminSession.admin_id == admin_prof.id).update({"is_active": False})
         
     db.commit()
+    clear_refresh_cookie(response)
     return {"message": "Logged out successfully from all devices"}
 
 @router.patch("/password")
@@ -453,7 +477,7 @@ def update_password(
 
 @router.post("/register", response_model=AuthResponse)
 @limiter.limit("3/minute")
-def register(request: Request, payload: UserCreate, db: Session = Depends(get_db)):
+def register(request: Request, response: Response, payload: UserCreate, db: Session = Depends(get_db)):
     """
     Register a new user with email and password.
     """
@@ -522,9 +546,10 @@ def register(request: Request, payload: UserCreate, db: Session = Depends(get_db
     )
     db.add(new_session)
     db.commit()
-    
+
+    set_refresh_cookie(response, refresh_token)
     return {
-        "access_token": access_token, 
+        "access_token": access_token,
         "refresh_token": refresh_token,
         "token_type": "bearer",
         "user_id": str(new_user.id),
@@ -565,6 +590,7 @@ def read_users_me(current_user: User = Depends(get_current_user), db: Session = 
         "access_token": "",  # Token not re-issued on /me; client should use the existing token
         "token_type": "bearer",
         "user_id": str(current_user.id),
+        "name": current_user.username,
         "email": current_user.email,
         "avatar_url": current_user.avatar_url,
         "is_new_user": False,
@@ -574,13 +600,14 @@ def read_users_me(current_user: User = Depends(get_current_user), db: Session = 
 
 
 @router.post("/google", response_model=AuthResponse)
-def google_login(payload: dict, db: Session = Depends(get_db)):
+def google_login(response: Response, payload: dict, db: Session = Depends(get_db)):
     """
     Login with Google credential. Generates JWT directly and sets up AdminSession if applicable.
     """
     from google.oauth2 import id_token
     from google.auth.transport import requests as google_requests
     from app.core.config import settings
+    import httpx
 
     credential = payload.get("credential")
     if not credential:
@@ -588,8 +615,47 @@ def google_login(payload: dict, db: Session = Depends(get_db)):
 
     try:
         client_id = settings.GOOGLE_CLIENT_ID
-        idinfo = id_token.verify_oauth2_token(credential, google_requests.Request(), client_id, clock_skew_in_seconds=10)
+        
+        if credential.startswith("ya29."):
+            # Handle Access Token
+            with httpx.Client() as client:
+                # 1. Verify token audience
+                token_info_resp = client.get(f"https://oauth2.googleapis.com/tokeninfo?access_token={credential}")
+                if token_info_resp.status_code != 200:
+                    raise ValueError("Invalid Google access token")
+                token_info = token_info_resp.json()
+                
+                azp = token_info.get("azp")
+                aud = token_info.get("aud")
+                if client_id not in (azp, aud):
+                    if aud or azp:
+                        raise ValueError(f"Token was not issued to this client (expected {client_id})")
+                
+                # 2. Get user info
+                user_info_resp = client.get(
+                    "https://www.googleapis.com/oauth2/v3/userinfo", 
+                    headers={"Authorization": f"Bearer {credential}"}
+                )
+                if user_info_resp.status_code != 200:
+                    raise ValueError("Failed to fetch Google user info")
+                idinfo = user_info_resp.json()
+        else:
+            # Handle ID Token
+            idinfo = id_token.verify_oauth2_token(credential, google_requests.Request(), client_id, clock_skew_in_seconds=10)
+            
         email = idinfo['email'].lower()
+        
+        # Robustly extract name
+        given_name = idinfo.get("given_name", "").strip()
+        family_name = idinfo.get("family_name", "").strip()
+        full_name = idinfo.get("name", "").strip()
+        
+        if not full_name:
+            if given_name or family_name:
+                full_name = f"{given_name} {family_name}".strip()
+            else:
+                full_name = email.split("@")[0]
+
     except Exception as e:
         import sys
         print(f"Google Token Verification Error: {e}")
@@ -604,7 +670,7 @@ def google_login(payload: dict, db: Session = Depends(get_db)):
         is_new = True
         user = User(
             email=email,
-            username=email.split("@")[0],
+            username=full_name,
             is_verified=True,
             role="user"
         )
@@ -622,6 +688,11 @@ def google_login(payload: dict, db: Session = Depends(get_db)):
         # Ensure existing users get their Gmail profile photo updated
         if "picture" in idinfo and user.avatar_url != idinfo["picture"]:
             user.avatar_url = idinfo["picture"]
+            updated = True
+            
+        # Update username if they were stuck with the old email prefix or we found a better name
+        if full_name and user.username != full_name:
+            user.username = full_name
             updated = True
             
         if updated:
@@ -675,11 +746,13 @@ def google_login(payload: dict, db: Session = Depends(get_db)):
 
     db.commit()
 
+    set_refresh_cookie(response, refresh_token)
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
         "token_type": "bearer",
         "user_id": str(user.id),
+        "name": user.username,
         "email": user.email,
         "avatar_url": user.avatar_url,
         "is_new_user": is_new,

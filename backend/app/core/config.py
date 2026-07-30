@@ -40,6 +40,15 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60))  # 1 hour default
     REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", 7))  # 7 days default
 
+    # Refresh-token cookie. The refresh token is delivered as an httpOnly cookie
+    # so JavaScript (and therefore XSS) cannot read it. Secure is forced on in
+    # production; SameSite=lax works for same-site and top-level navigations.
+    # Set REFRESH_COOKIE_DOMAIN when the API and app are on different subdomains
+    # of the same site (e.g. api.example.com + app.example.com → ".example.com").
+    REFRESH_COOKIE_NAME: str = os.getenv("REFRESH_COOKIE_NAME", "infichat_rt")
+    REFRESH_COOKIE_SAMESITE: str = os.getenv("REFRESH_COOKIE_SAMESITE", "lax")
+    REFRESH_COOKIE_DOMAIN: str = os.getenv("REFRESH_COOKIE_DOMAIN", "")
+
     # CORS & Hosts
     ALLOWED_ORIGINS: str = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:3000,http://localhost:8080")
     ALLOWED_HOSTS: str = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1")

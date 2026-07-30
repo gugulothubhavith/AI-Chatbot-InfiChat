@@ -60,6 +60,9 @@ async function fetchJSON<T = unknown>(
 ): Promise<T> {
   const res = await fetch(url(path), {
     ...init,
+    // Send the httpOnly refresh cookie on auth calls (login/refresh/logout).
+    // The refresh token is no longer stored in JS, so XSS cannot exfiltrate it.
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...authHeaders(),
@@ -146,11 +149,18 @@ async function getMe(): Promise<AuthResult> {
   return fetchJSON<AuthResult>("/auth/me");
 }
 
-async function refreshToken(refresh: string): Promise<AuthResult> {
+async function refreshToken(): Promise<AuthResult> {
+  // The refresh token lives in an httpOnly cookie; the browser attaches it
+  // automatically because fetchJSON sends credentials. No body needed.
   return fetchJSON<AuthResult>("/auth/refresh", {
     method: "POST",
-    body: JSON.stringify({ refresh_token: refresh }),
+    body: JSON.stringify({}),
   });
+}
+
+async function logout(): Promise<void> {
+  // Clears the httpOnly refresh cookie server-side and revokes sessions.
+  await fetchJSON("/auth/logout", { method: "POST" });
 }
 
 async function googleLogin(credential: string): Promise<AuthResult> {
@@ -217,7 +227,7 @@ export const api = {
   fetchJSON,
   fetchSSE,
   connectWS,
-  auth: { login, register, getMe, refreshToken, googleLogin },
+  auth: { login, register, getMe, refreshToken, googleLogin, logout },
   chat: { listSessions, createSession, deleteSession, getMessages, renameSession },
 
   // Settings
