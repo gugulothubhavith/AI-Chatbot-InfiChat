@@ -44,6 +44,9 @@ type SettingsState = {
   // Security
   piiScrubbing: boolean;
 
+  // Web
+  autoWebSearch: boolean;
+
   // Legacy chat prefs
   enterToSend: boolean;
   streaming: boolean;
@@ -79,6 +82,8 @@ export const useSettingsStore = create<SettingsState>()(
       voiceTTS: false,
 
       piiScrubbing: true,
+
+      autoWebSearch: true,
 
       enterToSend: true,
       streaming: true,
@@ -146,6 +151,7 @@ export const useSettingsStore = create<SettingsState>()(
         pythonInterpreter: s.pythonInterpreter,
         voiceTTS: s.voiceTTS,
         piiScrubbing: s.piiScrubbing,
+        autoWebSearch: s.autoWebSearch,
         enterToSend: s.enterToSend,
         streaming: s.streaming,
       }),

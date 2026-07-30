@@ -14,6 +14,11 @@ class ChatRequest(BaseModel):
     messages: List[Message]
     conversation_id: Optional[UUID] = None
     web_search: bool = False
+    # When True (default), a plain chat turn may transparently escalate to a
+    # grounded web search based on the prompt's intent. This is unmetered and
+    # abuse-capped server-side. Users can turn it off in settings, which sends
+    # False here. The manual `web_search` toggle above is a separate, metered path.
+    auto_web_search: bool = True
     use_rag: bool = False
     system_prompt: Optional[str] = None
     model: Optional[str] = None

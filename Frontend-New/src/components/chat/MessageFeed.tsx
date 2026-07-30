@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useChatStore } from "@/stores/chat";
 import { Markdown } from "./Markdown";
-import { RefreshCw, Copy, Pencil, Check, X } from "lucide-react";
+import { RefreshCw, Copy, Pencil, Check, X, Globe } from "lucide-react";
 import { motion } from "framer-motion";
 import { tapProps } from "@/lib/motion";
 import { useModelStore, MODELS } from "@/stores/model";
@@ -129,6 +129,12 @@ export function MessageFeed({ streamSlot }: { streamSlot?: React.ReactNode }) {
                 AI
               </div>
               <div className="min-w-0 flex-1">
+                {m.autoSearched && (
+                  <div className="mb-1.5 inline-flex items-center gap-1.5 rounded-full border border-brand/30 bg-brand/5 px-2 py-0.5 text-[11px] font-medium text-brand">
+                    <Globe className="h-3 w-3" />
+                    Searched the web automatically
+                  </div>
+                )}
                 <Markdown content={m.content} />
                 <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground">
                   <span>{modelName}</span>

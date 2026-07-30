@@ -47,7 +47,7 @@ SKIP_PATHS = {
 }
 
 # Path prefixes to track
-TRACK_PREFIXES = ("/api/v1/", "/chat/", "/research/", "/thinking/", "/code/", "/image/", "/rag/", "/voice/")
+TRACK_PREFIXES = ("/api/v1/", "/chat/", "/research/", "/thinking/", "/code/", "/image/", "/rag/", "/voice/", "/web_search/")
 
 _SERVICE_UNAVAILABLE = Response(
     content=json.dumps({

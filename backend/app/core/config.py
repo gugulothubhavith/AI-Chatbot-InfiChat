@@ -245,6 +245,26 @@ class Settings(BaseSettings):
 
     MEMORY_EXTRACTOR_MODEL: str = os.getenv("MEMORY_EXTRACTOR_MODEL", "nvidia/llama-3_3-nemotron-super-49b-v1_5")
     WEB_SEARCH_MODEL: str = os.getenv("WEB_SEARCH_MODEL", "nvidia/llama-3_3-nemotron-super-49b-v1_5")
+
+    # ═══════════════════════════════════════════════════════════════════
+    # AUTO WEB SEARCH (intent-driven, unmetered)
+    # ═══════════════════════════════════════════════════════════════════
+    # Auto-search escalates a normal chat turn to grounded web search when the
+    # prompt clearly needs fresh facts. It is intentionally NOT metered against
+    # the user's plan (manual `/web_search/` still is). To stop it being abused
+    # as a free bypass, auto-search is capped per user per day server-side.
+    AUTO_WEB_SEARCH_ENABLED: bool = os.getenv("AUTO_WEB_SEARCH_ENABLED", "true").lower() == "true"
+    # Cheap classifier model used only when heuristics are ambiguous.
+    AUTO_WEB_SEARCH_CLASSIFIER_MODEL: str = os.getenv(
+        "AUTO_WEB_SEARCH_CLASSIFIER_MODEL", FAST_MODEL
+    )
+    # Abuse ceiling: max auto-triggered searches per user per rolling day.
+    AUTO_WEB_SEARCH_DAILY_CAP: int = int(os.getenv("AUTO_WEB_SEARCH_DAILY_CAP", "50"))
+    # Redis TTL (seconds) for cached intent classifications keyed by prompt hash.
+    AUTO_WEB_SEARCH_INTENT_CACHE_TTL: int = int(
+        os.getenv("AUTO_WEB_SEARCH_INTENT_CACHE_TTL", "86400")
+    )
+
     DEEP_RESEARCH_DEFAULT_MODEL: str = os.getenv("DEEP_RESEARCH_DEFAULT_MODEL", "nvidia/nemotron-3-ultra-550b-a55b")
     DEEP_RESEARCH_FAST_LOOP_MODEL: str = os.getenv("DEEP_RESEARCH_FAST_LOOP_MODEL", "nvidia/llama-3_3-nemotron-super-49b-v1_5")
 

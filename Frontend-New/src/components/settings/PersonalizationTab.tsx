@@ -57,6 +57,9 @@ export function PersonalizationTab() {
       <div className="h-6" />
       <SectionTitle title="Advanced" />
       <Block>
+        <Row title="Automatic web search" description="Let InfiChat search the web on its own when a question needs fresh facts. Doesn't count against your web-search limit.">
+          <Switch checked={s.autoWebSearch} onCheckedChange={(v) => { s.set("autoWebSearch", v); toast(v ? "Automatic web search on" : "Automatic web search off"); }} />
+        </Row>
         <Row title="Python code interpreter" description="Execute code in an isolated container.">
           <Switch checked={s.pythonInterpreter} onCheckedChange={(v) => { s.set("pythonInterpreter", v); toast(v ? "Interpreter enabled" : "Interpreter disabled"); }} />
         </Row>

@@ -114,7 +114,8 @@ def get_user_subscription(user_id: str, db: Session) -> dict:
     free_plan = db.query(SubscriptionPlan).filter(
         SubscriptionPlan.price_monthly == 0,
         SubscriptionPlan.is_active == True,
-    ).first()
+        SubscriptionPlan.is_admin_plan == False,
+    ).order_by(SubscriptionPlan.sort_order).first()
 
     return {
         "plan": free_plan,
@@ -174,10 +175,15 @@ FEATURE_PATH_MAP = {
     "/image/": "image_gen",
     "/code/": "code_executions",
     "/rag/": "rag",
+    # Manual web search only. Auto-triggered search runs inside /chat/ and is
+    # deliberately NOT metered here — it is charged as a normal chat message,
+    # never against the web_search quota. The web_search quota is consumed ONLY
+    # when the user explicitly enables the toggle and hits this endpoint.
+    "/web_search/": "web_search",
 }
 
 # Daily features vs monthly features
-DAILY_FEATURES = {"chat_messages", "chat_tokens"}
+DAILY_FEATURES = {"chat_messages", "chat_tokens", "web_search"}
 MONTHLY_FEATURES = {"deep_research", "deep_thinking", "image_gen", "code_executions"}
 
 # Map features to their limit keys in the plan
@@ -189,6 +195,7 @@ FEATURE_LIMIT_KEY = {
     "image_gen": "image_gen_per_month",
     "code_executions": "code_executions_per_month",
     "rag": "rag_documents",
+    "web_search": "web_search_per_day",
 }
 
 

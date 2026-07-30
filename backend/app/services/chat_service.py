@@ -150,49 +150,86 @@ async def process_chat(payload: ChatRequest, user: User, db: Session, background
 
     # 7. Memory & System Prompt Injection
     system_messages = []
-    
-    # 7.5 Auto-Trigger Web Search
-    if not attached_file and payload.model != "research_agent":
-        from app.services.llm_router import call_llm
-        from app.core.config import settings
-        
-        intent_prompt = f"Does the following query absolutely require a real-time web search to answer accurately (e.g. current news, weather, recent events, live prices)? Reply ONLY with 'YES' or 'NO'.\nQuery: {last_msg.content}"
+
+    # Records whether an auto web-search actually grounded this turn, so the
+    # stream can surface a "Searched the web automatically" affordance.
+    auto_searched = False
+
+    # 7.5 Auto-Trigger Web Search (intent-driven, unmetered, abuse-capped).
+    #
+    # This escalates a plain chat turn to a grounded web search WITHOUT the user
+    # flipping the manual toggle. Per product spec it is NOT metered against the
+    # web_search quota — that quota is only consumed on the explicit /web_search/
+    # endpoint. A per-user daily ceiling (Redis) stops it being a free bypass.
+    #
+    # Users can disable auto-search entirely from settings; the client signals
+    # that by setting `web_search=False` intent off via the `auto_web_search`
+    # flag on the request (defaults to enabled).
+    auto_search_enabled = getattr(payload, "auto_web_search", True)
+    if (
+        auto_search_enabled
+        and not attached_file
+        and payload.model != "research_agent"
+        and last_msg.content
+    ):
+        from app.services.web_search.intent import (
+            should_auto_search,
+            within_auto_search_cap,
+            record_auto_search,
+        )
+
         try:
-            intent_payload = {
-                "model": settings.DEFAULT_CHAT_MODEL,
-                "messages": [{"role": "user", "content": intent_prompt}],
-                "temperature": 0.1,
-                "max_tokens": 200
-            }
-            intent_res = await call_llm("chat", intent_payload, stream=False)
-            intent_answer = intent_res.get("choices", [{}])[0].get("message", {}).get("content", "").strip().upper()
-            logger.info(f"Intent answer for '{last_msg.content}': {intent_answer}")
-            
-            if "YES" in intent_answer:
-                logger.info(f"Auto-Triggering Web Search for query: {last_msg.content}")
-                from app.services.web_search.orchestrator import run_web_search
-                
-                search_report = ""
-                async for event in run_web_search(last_msg.content, model=settings.DEFAULT_CHAT_MODEL):
-                    if event.startswith("data: "):
+            intent = await should_auto_search(last_msg.content)
+            if intent.should_search:
+                if not within_auto_search_cap(str(user.id)):
+                    logger.info(
+                        "Auto-search suppressed: user %s over daily cap", user.id
+                    )
+                else:
+                    logger.info(
+                        "Auto-Triggering Web Search (reason=%s) for user %s",
+                        intent.reason, user.id,
+                    )
+                    from app.services.web_search.orchestrator import run_web_search
+
+                    search_report = ""
+                    async for event in run_web_search(
+                        last_msg.content,
+                        model=payload.model or settings.DEFAULT_CHAT_MODEL,
+                    ):
+                        if not event.startswith("data: "):
+                            continue
                         data_str = event[6:].strip()
-                        if data_str:
-                            try:
-                                data = json.loads(data_str)
-                                if data.get("type") == "report":
-                                    report_content = data.get("content", "")
-                                    citations = data.get("citations", [])
-                                    if citations:
-                                        cit_str = "\n".join([f"[{c.get('index')}] [{c.get('title')}]({c.get('url')})" for c in citations])
-                                        report_content += "\n\n---\n**Sources:**\n" + cit_str
-                                    search_report = report_content
-                            except Exception:
-                                pass
-                
-                if search_report:
-                    system_messages.append(f"Web Search Results (Real-time data):\n{search_report}\n\nUse this information to accurately answer the user's query.")
+                        if not data_str:
+                            continue
+                        try:
+                            data = json.loads(data_str)
+                        except Exception:
+                            continue
+                        if data.get("type") == "report":
+                            report_content = data.get("content", "")
+                            citations = data.get("citations", [])
+                            if citations:
+                                cit_str = "\n".join(
+                                    f"[{c.get('index')}] [{c.get('title')}]({c.get('url')})"
+                                    for c in citations
+                                )
+                                report_content += "\n\n---\n**Sources:**\n" + cit_str
+                            search_report = report_content
+
+                    if search_report:
+                        record_auto_search(str(user.id))
+                        auto_searched = True
+                        system_messages.append(
+                            "Web Search Results (Real-time data):\n"
+                            f"{search_report}\n\n"
+                            "Use this information to accurately answer the user's query. "
+                            "Cite sources inline using the [n] markers provided."
+                        )
         except Exception as e:
+            # Auto-search must never break a normal reply.
             logger.warning(f"Auto-Trigger Web Search failed: {e}")
+
 
     # User Custom System Prompt
     if payload.system_prompt:
@@ -223,17 +260,28 @@ async def process_chat(payload: ChatRequest, user: User, db: Session, background
     if system_messages:
         messages.insert(0, {"role": "system", "content": "\n\n".join(system_messages)})
 
-    # 8.Vision Handling
+    # 8. Local Document Parsing (Omni-Parser)
     if last_msg.image:
-        llm_model = "vision_model"
-        vision_content = [
-            {"type": "text", "text": last_msg.content or "Describe this image"},
-            {"type": "image_url", "image_url": {"url": last_msg.image}} 
-        ]
-        messages[-1]["content"] = vision_content
-        key_group = "vision"
+        from app.services.attachment_extractor import process_attachment_via_unstructured
+        
+        # Send attachment to local Docker Unstructured API
+        extracted_markdown = await process_attachment_via_unstructured(
+            last_msg.image, 
+            file_name=last_msg.file_name
+        )
+        
+        # Inject extracted text into standard prompt context
+        new_content = (last_msg.content or "Please review the attached document.") + "\n\n"
+        new_content += "--- EXTRACTED ATTACHMENT CONTENT ---\n"
+        new_content += extracted_markdown
+        new_content += "\n------------------------------------\n"
+        
+        messages[-1]["content"] = new_content
+        
+        llm_model = payload.model or settings.DEFAULT_CHAT_MODEL
+        key_group = "rag" if payload.use_rag else "chat"
     else:
-        llm_model = payload.model or "chat"
+        llm_model = payload.model or settings.DEFAULT_CHAT_MODEL
         key_group = "rag" if payload.use_rag else "chat"
 
     llm_payload = {
@@ -251,6 +299,10 @@ async def process_chat(payload: ChatRequest, user: User, db: Session, background
         async def stream_wrapper():
             try:
                 logger.info(f"Stream Wrapper starting for model: {llm_model}")
+                # Surface the auto web-search affordance up front so the UI can
+                # show "Searched the web automatically" before the answer streams.
+                if auto_searched:
+                    yield {"type": "web_search_auto", "active": True}
                 full_content = ""
                 # call_llm returns an async generator for stream=True
                 generator = await call_llm("chat", llm_payload, key_group=key_group, stream=True)

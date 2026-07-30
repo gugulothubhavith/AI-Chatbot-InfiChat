@@ -8,6 +8,7 @@ export type Msg = {
   content: string;
   tokens?: number;
   latencyMs?: number;
+  autoSearched?: boolean;
 };
 export type Conversation = {
   id: string;
@@ -44,6 +45,7 @@ async function streamChat(
   sessionId: string,
   signal: AbortSignal,
   onChunk: (text: string) => void,
+  onAutoSearch?: () => void,
 ): Promise<void> {
   // Get current model from model store
   const modelId = (() => {
@@ -54,11 +56,25 @@ async function streamChat(
     } catch { return "nvidia/nemotron-3-ultra-550b-a55b"; }
   })();
 
+  // Honour the user's auto web-search preference (default on). Auto-search is
+  // unmetered and abuse-capped server-side; this only lets the user opt out.
+  const autoWebSearch = (() => {
+    try {
+      const raw = localStorage.getItem("infichat-settings");
+      if (!raw) return true;
+      const v = JSON.parse(raw)?.state?.autoWebSearch;
+      return v === undefined ? true : Boolean(v);
+    } catch { return true; }
+  })();
+
+  // The backend /chat/stream expects an OpenAI-shaped ChatRequest: a `messages`
+  // array and `conversation_id`, not a bare `message` string.
   const res = await api.fetchSSE("/chat/stream", {
-    message: content,
-    session_id: sessionId,
+    messages: [{ role: "user", content }],
+    conversation_id: sessionId,
     model: modelId,
     stream: true,
+    auto_web_search: autoWebSearch,
   }, signal);
 
   const reader = res.body?.getReader();
@@ -79,6 +95,11 @@ async function streamChat(
       if (!dataStr || dataStr === "[DONE]") continue;
       try {
         const parsed = JSON.parse(dataStr);
+        // Structured control frame: the server auto-triggered a web search.
+        if (parsed.type === "web_search_auto") {
+          onAutoSearch?.();
+          continue;
+        }
         const chunk = parsed.content ?? parsed.delta ?? parsed.text ?? "";
         if (chunk) onChunk(chunk);
       } catch {
@@ -172,16 +193,32 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const t0 = Date.now();
 
     try {
-      await streamChat(content, id!, ctrl.signal, (chunk) => {
-        set((s) => ({
-          conversations: s.conversations.map((c) => ({
-            ...c,
-            messages: c.messages.map((m) =>
-              m.id === assistantId ? { ...m, content: m.content + chunk } : m,
-            ),
-          })),
-        }));
-      });
+      await streamChat(
+        content,
+        id!,
+        ctrl.signal,
+        (chunk) => {
+          set((s) => ({
+            conversations: s.conversations.map((c) => ({
+              ...c,
+              messages: c.messages.map((m) =>
+                m.id === assistantId ? { ...m, content: m.content + chunk } : m,
+              ),
+            })),
+          }));
+        },
+        () => {
+          // Server auto-triggered a web search for this turn.
+          set((s) => ({
+            conversations: s.conversations.map((c) => ({
+              ...c,
+              messages: c.messages.map((m) =>
+                m.id === assistantId ? { ...m, autoSearched: true } : m,
+              ),
+            })),
+          }));
+        },
+      );
       // Mark final metadata
       set((s) => ({
         conversations: s.conversations.map((c) => ({

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Request, Security
 from fastapi.responses import StreamingResponse
 from app.core.deps import get_current_user, get_db
 from app.models.user import User
@@ -20,7 +20,7 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
 async def list_sessions(
     workspace: Optional[str] = Query("personal"),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    user: User = Security(get_current_user, scopes=["chat:read"])
 ):
     sessions = db.query(ChatSession).filter(
         ChatSession.user_id == user.id,
@@ -32,7 +32,7 @@ async def list_sessions(
 async def create_session(
     payload: Optional[ChatSessionCreate] = None,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    user: User = Security(get_current_user, scopes=["chat:write"])
 ):
     new_session = ChatSession(user_id=user.id)
     if payload:
@@ -51,7 +51,7 @@ async def update_session(
     session_id: str,
     update_data: ChatSessionUpdate,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    user: User = Security(get_current_user, scopes=["chat:write"])
 ):
     session = db.query(ChatSession).filter(ChatSession.id == session_id, ChatSession.user_id == user.id).first()
     if not session:
@@ -69,7 +69,7 @@ async def update_session(
 async def delete_session(
     session_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    user: User = Security(get_current_user, scopes=["chat:write"])
 ):
     session = db.query(ChatSession).filter(ChatSession.id == session_id, ChatSession.user_id == user.id).first()
     if not session:
@@ -79,28 +79,34 @@ async def delete_session(
     from sqlalchemy import text
     db.execute(text("DELETE FROM shared_chats WHERE session_id = :sid"), {"sid": session_id})
     
+    db.query(ChatMessage).filter(ChatMessage.session_id == session.id).delete()
     db.delete(session)
     db.commit()
-    return {"status": "deleted"}
+    
+    # Also drop from background tracking if present
+    background_tasks = BackgroundTasks()
+    delete_user_chat_history(str(user.id), session_id)
+    
+    return {"status": "success"}
 
 @router.get("/sessions/{session_id}/messages")
-async def get_messages(
+async def list_messages(
     session_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    user: User = Security(get_current_user, scopes=["chat:read"])
 ):
     session = db.query(ChatSession).filter(ChatSession.id == session_id, ChatSession.user_id == user.id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-    
-    messages = db.query(ChatMessage).filter(ChatMessage.session_id == session_id).order_by(ChatMessage.created_at.asc()).all()
+        
+    messages = db.query(ChatMessage).filter(ChatMessage.session_id == session.id).order_by(ChatMessage.created_at.asc()).all()
     return messages
 
 @router.get("/search")
 async def search_chats(
     q: str = Query(..., min_length=1),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    user: User = Security(get_current_user, scopes=["chat:read"])
 ):
     # Search in session titles and message content
     results = db.query(ChatSession).join(ChatMessage).filter(
@@ -116,7 +122,7 @@ async def chat_message(
     request: Request,
     payload: ChatRequest,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    user: User = Security(get_current_user, scopes=["chat:write"])
 ):
     from app.services.chat_service import process_chat
     response, session_id = await process_chat(payload, user, db)
@@ -134,7 +140,7 @@ async def chat_stream(
     request: Request,
     payload: ChatRequest,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    user: User = Security(get_current_user, scopes=["chat:write"])
 ):
     try:
         # Assuming process_chat is modified to return a tuple: (async_generator, session_id)
@@ -142,12 +148,18 @@ async def chat_stream(
 
         async def event_generator_wrapper():
             async for chunk in generator:
-                # Use JSON to safely transport chunks that might contain newlines
+                # process_chat may yield either a plain string (a content delta)
+                # or a dict (a structured control frame, e.g. the auto web-search
+                # affordance). Pass dicts through verbatim; wrap strings as a
+                # standard content frame.
                 try:
-                    data = json.dumps({"content": chunk})
-                    yield f"data: {data}\n\n"
-                except:
-                    yield f"data: {str(chunk)}\n\n"
+                    if isinstance(chunk, dict):
+                        yield f"data: {json.dumps(chunk)}\n\n"
+                    else:
+                        data = json.dumps({"content": chunk})
+                        yield f"data: {data}\n\n"
+                except Exception:
+                    yield f"data: {json.dumps({'content': str(chunk)})}\n\n"
         
         return StreamingResponse(
             event_generator_wrapper(),
