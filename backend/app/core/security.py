@@ -85,6 +85,27 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     Follows OWASP Secure Headers Project recommendations.
     """
 
+    @staticmethod
+    def _connect_src() -> str:
+        """Build the CSP connect-src allowlist from configured origins.
+
+        Includes 'self', every configured CORS origin, and a ws/wss variant of
+        each so browser fetch/XHR/WebSocket to our own API is permitted while
+        exfiltration to arbitrary third-party hosts is blocked. Falls back to
+        'self' if no origins are configured.
+        """
+        sources = ["'self'"]
+        for origin in settings.cors_origins:
+            sources.append(origin)
+            if origin.startswith("https://"):
+                sources.append("wss://" + origin[len("https://"):])
+            elif origin.startswith("http://"):
+                sources.append("ws://" + origin[len("http://"):])
+        # De-duplicate while preserving order.
+        seen = set()
+        deduped = [s for s in sources if not (s in seen or seen.add(s))]
+        return " ".join(deduped)
+
     async def dispatch(self, request: Request, call_next) -> Response:
         # Generate a unique nonce for this request
         nonce = secrets.token_urlsafe(16)
@@ -109,15 +130,27 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             # Allow Swagger UI resources for documentation
             response.headers["Content-Security-Policy"] = "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: https:;"
         else:
-            # Strict CSP for all other endpoints
+            # Strict CSP for all other endpoints.
+            #
+            # connect-src is derived from configured origins plus their
+            # ws/wss equivalents rather than a blanket "https: ws: wss:", so a
+            # compromised script cannot exfiltrate to an arbitrary host. In
+            # development the origin list is localhost, which keeps Vite/HMR
+            # working; in production it is the real app origin(s).
+            #
+            # 'unsafe-eval' is intentionally NOT present: it re-enables
+            # string-to-code execution and defeats much of the CSP's XSS value.
             response.headers["Content-Security-Policy"] = (
-                f"default-src 'self'; "
-                f"script-src 'self' 'nonce-{nonce}' 'unsafe-eval'; "
-                f"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+                "default-src 'self'; "
+                f"script-src 'self' 'nonce-{nonce}'; "
+                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
                 "img-src 'self' data: blob: https:; "
                 "font-src 'self' https://fonts.gstatic.com; "
-                "connect-src 'self' ws: wss: https:; "
+                f"connect-src {self._connect_src()}; "
                 "media-src 'self' blob:; "
+                "object-src 'none'; "
+                "base-uri 'self'; "
+                "form-action 'self'; "
                 "frame-ancestors 'none'"
             )
 

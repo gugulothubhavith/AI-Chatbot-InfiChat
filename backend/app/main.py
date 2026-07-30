@@ -40,7 +40,18 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting up AI Platform Backend...")
     logger.info(f"Project Name: {settings.PROJECT_NAME}")
-    logger.info(f"Groq API Key set: {'Yes' if settings.GROQ_API_KEY else 'No'}")
+
+    # Configure and report the NVIDIA API key pool.
+    from app.services.key_pool import key_pool
+    if key_pool.size == 0:
+        key_pool.configure(settings.nvidia_api_keys)
+    if key_pool.size == 0:
+        logger.error(
+            "No NVIDIA API keys configured — all AI features will fail. "
+            "Set NVIDIA_API_KEY_1..4 in backend/.env"
+        )
+    else:
+        logger.info(f"NVIDIA key pool: {key_pool.size} key(s) active, rotated per-agent")
     
     from app.database.db import init_db
     from app.services import voice_service
@@ -64,15 +75,7 @@ async def lifespan(app: FastAPI):
         from app.services.seed_admin import seed_admin
         seed_admin()
         logger.info("Admin seeding check complete.")
-        logger.info("")
-        logger.info("╔══════════════════════════════════════════════════════╗")
-        logger.info("║            ADMIN PANEL CREDENTIALS                  ║")
-        logger.info("╠══════════════════════════════════════════════════════╣")
-        logger.info("║  Email:    gugulothubhavith2006@gmail.com          ║")
-        logger.info("║  Password: Gbhavith@2005                           ║")
-        logger.info("║  URL:      http://localhost:5174                    ║")
-        logger.info("╚══════════════════════════════════════════════════════╝")
-        logger.info("")
+        logger.info("Admin panel: http://localhost:5174 — credentials are set via seed_admin/env, not logged.")
 
         # Automatically run schema fixes
         logger.info("Running automated schema fixes...")
@@ -159,7 +162,7 @@ app = FastAPI(
     description=(
         "## Backend API\n\n"
         "A fully self-hosted, multi-modal AI platform with:\n"
-        "- **Streaming Chat** powered by Groq, Gemini, and OpenRouter\n"
+        "- **Streaming Chat** powered by Groq and NVIDIA\n"
         "- **Professional Indic TTS** — English, Hindi, Telugu voices\n"
         "- **Whisper STT** — speech-to-text transcription\n"
         "- **RAG** — personal Knowledge Base from uploaded documents\n"
@@ -338,7 +341,7 @@ async def health(request: Request):
     }
 
 
-from app.api import auth, chat, code_agent, rag, image, admin, ws_code, ws_agent, voice, snippets, settings as settings_api, admin_governance, admin_security, admin_zero_trust, metrics, organizations, proxy, ws_broadcast, system, research, thinking, subscriptions, web_search
+from app.api import auth, chat, code_agent, rag, image, admin, ws_code, ws_agent, voice, snippets, settings as settings_api, api_keys, admin_governance, admin_security, admin_zero_trust, metrics, organizations, proxy, ws_broadcast, system, research, thinking, subscriptions, web_search
 
 # --- API v1 Router Registration (versioned endpoints) ---
 # All REST API routes are prefixed with /api/v1 for professional versioning
@@ -352,6 +355,7 @@ app.include_router(image.router, prefix=API_V1_PREFIX)
 app.include_router(voice.router, prefix=API_V1_PREFIX)
 app.include_router(snippets.router, prefix=API_V1_PREFIX)
 app.include_router(settings_api.router, prefix=API_V1_PREFIX)
+app.include_router(api_keys.router, prefix=API_V1_PREFIX)
 app.include_router(proxy.router, prefix=API_V1_PREFIX)
 app.include_router(research.router, prefix=API_V1_PREFIX)
 app.include_router(thinking.router, prefix=API_V1_PREFIX)
@@ -368,7 +372,11 @@ app.include_router(organizations.router, prefix=API_V1_PREFIX)
 app.include_router(system.router, prefix=API_V1_PREFIX)
 
 # --- Backward-Compatible Legacy Routes (no prefix) ---
-# These ensure the existing frontend works seamlessly during transition
+# INTENTIONAL dual registration: Frontend-New calls the versioned /api/v1
+# routes, while admin-frontend and the legacy frontend call these unprefixed
+# routes. Both mount the same router objects, so there is no duplicated logic —
+# only two URL surfaces. Do not remove until both older frontends migrate to
+# /api/v1, or their requests will 404.
 app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(admin.router)
@@ -383,6 +391,7 @@ app.include_router(image.router)
 app.include_router(voice.router)
 app.include_router(snippets.router)
 app.include_router(settings_api.router)
+app.include_router(api_keys.router)
 app.include_router(proxy.router)
 app.include_router(research.router)
 app.include_router(thinking.router)
