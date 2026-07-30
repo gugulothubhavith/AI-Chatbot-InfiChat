@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Body
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Body, Form
 from fastapi.responses import StreamingResponse
 from app.services.indic_voice_service import indic_voice_service
 from app.services import voice_service
@@ -26,10 +26,23 @@ _CHUNK = 1024 * 1024
 # Only accept containers the transcriber can actually decode.
 ALLOWED_AUDIO_EXTENSIONS = {"wav", "webm", "mp3", "m4a", "ogg", "flac", "mp4"}
 
+# Language hints we forward to Whisper. Anything else (including the client's
+# "auto") maps to None → auto-detect, so an attacker can't smuggle arbitrary
+# strings into the model call.
+ALLOWED_STT_LANGUAGES = {"en", "hi", "te", "ta", "kn", "ml", "mr", "bn", "gu", "pa"}
+
+
+def _normalize_language(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    code = raw.strip().lower()[:5]
+    return code if code in ALLOWED_STT_LANGUAGES else None
+
 
 @router.post("/transcribe")
 async def transcribe_audio(
     file: UploadFile = File(...),
+    language: str | None = Form(default=None),
     user: User = Depends(get_current_user)
 ):
     filepath = None
@@ -60,7 +73,9 @@ async def transcribe_audio(
         if written == 0:
             raise HTTPException(status_code=400, detail="Uploaded audio is empty")
 
-        text = await voice_service.transcribe_audio(filepath)
+        text = await voice_service.transcribe_audio(
+            filepath, language=_normalize_language(language)
+        )
 
         if not text or text.startswith("[Error"):
              raise HTTPException(status_code=500, detail="Transcription failed or empty")

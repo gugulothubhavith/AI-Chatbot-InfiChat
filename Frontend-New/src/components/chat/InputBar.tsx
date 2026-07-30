@@ -1,10 +1,12 @@
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { motion } from "framer-motion";
 import { tapProps } from "@/lib/motion";
-import { Paperclip, Mic, ArrowUp, Square, Globe, ImagePlus, Telescope, Brain, ChevronDown, Check, SlidersHorizontal, X } from "lucide-react";
+import { Paperclip, Mic, ArrowUp, Square, Globe, ImagePlus, Telescope, Brain, ChevronDown, Check, SlidersHorizontal, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useSettingsStore } from "@/stores/settings";
 import { useModelStore, BUILTIN_MODELS, type ToolId, type ModelId } from "@/stores/model";
+import { useTtsStore } from "@/stores/tts";
+import { api } from "@/lib/api";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,9 +44,18 @@ export function InputBar({
 
   const [value, setValue] = useState("");
   const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
+  // Media capture handles for the getUserMedia-based recorder. Kept in refs so
+  // the stop handler can tear the whole pipeline down deterministically.
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
   const enterToSend = useSettingsStore((s) => s.enterToSend);
+  const spokenLang = useSettingsStore((s) => s.spokenLang);
+  const stopTts = useTtsStore((s) => s.stop);
+  const ttsActive = useTtsStore((s) => s.activeId);
   const model = useModelStore((s) => s.model);
   const setModel = useModelStore((s) => s.setModel);
   const tools = useModelStore((s) => s.tools);
@@ -73,6 +84,109 @@ export function InputBar({
   const autoresize = (el: HTMLTextAreaElement) => {
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 200) + "px";
+  };
+
+  // ── Speech-to-text ────────────────────────────────────────────────
+  // Captured via getUserMedia with echo cancellation / noise suppression /
+  // auto-gain enabled, which is the fix for the recorder picking up the
+  // device's own speaker output (assistant TTS) and feeding it back as input.
+  // Audio is recorded to a blob and transcribed server-side by Whisper for
+  // accuracy and language control, rather than the browser SpeechRecognition
+  // engine (which ignored these constraints and could not be reliably stopped).
+
+  const releaseStream = () => {
+    mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
+    mediaStreamRef.current = null;
+    mediaRecorderRef.current = null;
+  };
+
+  const stopRecording = () => {
+    const rec = mediaRecorderRef.current;
+    if (rec && rec.state !== "inactive") {
+      // Fires onstop, which runs transcription, then releases the stream.
+      rec.stop();
+    } else {
+      releaseStream();
+    }
+    setRecording(false);
+  };
+
+  const startRecording = async () => {
+    // Mutual exclusion: never let the mic run while the assistant is speaking,
+    // otherwise its audio is exactly what gets transcribed back.
+    if (ttsActive) stopTts();
+
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      toast.error("Voice input is not supported in this browser.");
+      return;
+    }
+
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+    } catch (err) {
+      const denied = err instanceof DOMException && err.name === "NotAllowedError";
+      toast.error(denied ? "Microphone permission denied." : "Could not access the microphone.");
+      return;
+    }
+
+    mediaStreamRef.current = stream;
+    chunksRef.current = [];
+
+    // Prefer opus/webm where available; fall back to the UA default.
+    const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+      ? "audio/webm;codecs=opus"
+      : MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : "";
+    const recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+    mediaRecorderRef.current = recorder;
+
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunksRef.current.push(e.data);
+    };
+
+    recorder.onstop = async () => {
+      const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
+      chunksRef.current = [];
+      releaseStream();
+      if (blob.size === 0) return;
+
+      setTranscribing(true);
+      try {
+        const text = await api.voice.transcribe(blob, spokenLang);
+        const clean = text.trim();
+        if (clean) {
+          setValue((prev) => (prev ? `${prev} ${clean}` : clean));
+          if (ref.current) autoresize(ref.current);
+        } else {
+          toast("No speech detected.");
+        }
+      } catch {
+        toast.error("Transcription failed.");
+      } finally {
+        setTranscribing(false);
+      }
+    };
+
+    recorder.start();
+    setRecording(true);
+  };
+
+  // Tear the pipeline down if the component unmounts mid-recording so the mic
+  // indicator can't stay on after navigation.
+  useEffect(() => releaseStream, []);
+
+  const toggleMic = () => {
+    if (transcribing) return;
+    if (recording) stopRecording();
+    else void startRecording();
   };
 
   return (
@@ -219,52 +333,15 @@ export function InputBar({
 
           <motion.button
             {...tapProps}
-            onClick={() => {
-              if (recording) {
-                setRecording(false);
-                return;
-              }
-              const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-              if (!SpeechRecognition) {
-                toast.error("Speech recognition is not supported in this browser.");
-                return;
-              }
-              const recognition = new SpeechRecognition();
-              recognition.continuous = false;
-              recognition.interimResults = true;
-              recognition.onstart = () => {
-                setRecording(true);
-              };
-              let finalTranscript = value;
-              recognition.onresult = (event: any) => {
-                let interim = "";
-                let final = "";
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                  if (event.results[i].isFinal) {
-                    final += event.results[i][0].transcript;
-                  } else {
-                    interim += event.results[i][0].transcript;
-                  }
-                }
-                const newText = finalTranscript + (finalTranscript ? " " : "") + final + interim;
-                setValue(newText);
-              };
-              recognition.onerror = (e: any) => {
-                console.error(e);
-                setRecording(false);
-                toast.error("Speech recognition failed.");
-              };
-              recognition.onend = () => {
-                setRecording(false);
-              };
-              recognition.start();
-            }}
-            className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors ${
+            onClick={toggleMic}
+            disabled={transcribing}
+            aria-label={recording ? "Stop recording" : "Start voice input"}
+            className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors disabled:opacity-60 ${
               recording ? "bg-destructive/15 text-destructive" : "text-muted-foreground hover:bg-surface-2 hover:text-foreground"
             }`}
           >
             {recording && <span className="absolute inset-0 rounded-xl bg-destructive/30 pulse-ring" />}
-            <Mic className="h-4 w-4" />
+            {transcribing ? <Loader2 className="h-4 w-4 animate-spin" /> : recording ? <Square className="h-3.5 w-3.5 fill-current" /> : <Mic className="h-4 w-4" />}
           </motion.button>
           <motion.button
             {...tapProps}

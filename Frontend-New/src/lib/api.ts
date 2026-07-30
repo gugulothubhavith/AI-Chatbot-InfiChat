@@ -239,6 +239,39 @@ export const api = {
   createApiKey: (name: string, scopes: string[]) => fetchJSON("/api_keys/", { method: "POST", body: JSON.stringify({ name, scopes }) }),
   deleteApiKey: (id: string) => fetchJSON(`/api_keys/${id}`, { method: "DELETE" }),
 
+  // Voice — TTS returns raw streamed audio, so hand back the Response for the
+  // caller to pipe into an HTMLAudioElement. Non-ok is surfaced to the caller
+  // (it falls back to the browser SpeechSynthesis engine).
+  voice: {
+    tts: (text: string, voice_id: string, signal?: AbortSignal) =>
+      fetch(url("/voice/tts"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ text, voice_id }),
+        signal,
+      }),
+    // Multipart upload — do NOT set Content-Type, the browser adds the
+    // multipart boundary. Returns the transcribed text.
+    transcribe: async (blob: Blob, language?: string, signal?: AbortSignal): Promise<string> => {
+      const form = new FormData();
+      const ext = blob.type.includes("webm") ? "webm" : blob.type.includes("ogg") ? "ogg" : "wav";
+      form.append("file", blob, `speech.${ext}`);
+      if (language && language !== "auto") form.append("language", language);
+      const res = await fetch(url("/voice/transcribe"), {
+        method: "POST",
+        headers: { ...authHeaders() },
+        body: form,
+        signal,
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        throw new Error(`transcribe ${res.status}: ${body.slice(0, 200)}`);
+      }
+      const data = (await res.json()) as { text?: string };
+      return data.text ?? "";
+    },
+  },
+
   // Subscriptions
   getPlans: () => fetchJSON("/subscription/plans"),
   getMyPlan: () => fetchJSON("/subscription/my-plan"),

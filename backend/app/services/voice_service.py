@@ -29,36 +29,6 @@ def get_local_model():
     return _model_instance
 
 
-async def transcribe_audio_groq(file_path: str) -> str:
-    """Transcribe audio using Groq Cloud Whisper API (fast, no local model needed)."""
-    import httpx
-    
-    api_key = settings.GROQ_STT_API_KEY
-    model = settings.GROQ_STT_MODEL or "whisper-large-v3"
-    
-    if not api_key:
-        raise ValueError("GROQ_STT_API_KEY not configured")
-    
-    logger.info(f"Transcribing {file_path} via Groq Cloud ({model})...")
-    
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        with open(file_path, "rb") as f:
-            response = await client.post(
-                "https://api.groq.com/openai/v1/audio/transcriptions",
-                headers={"Authorization": f"Bearer {api_key}"},
-                data={"model": model, "language": "en", "response_format": "json"},
-                files={"file": (os.path.basename(file_path), f)},
-            )
-        
-        if response.status_code != 200:
-            logger.error(f"Groq STT API error {response.status_code}: {response.text}")
-            raise ValueError(f"Groq API error: {response.status_code}")
-        
-        result = response.json()
-        text = result.get("text", "").strip()
-        logger.info(f"Groq transcription result: {text[:80]}...")
-        return text
-
 def _find_models():
     """Locate the Kokoro ONNX and voices file correctly."""
     # 1. Try hardcoded path as fallback
@@ -126,31 +96,35 @@ def preload_models():
     # get_local_model()
     pass
 
-async def transcribe_audio(file_path: str) -> str:
-    """Transcribe audio — prefers Groq Cloud, falls back to local faster-whisper."""
-    # 1. Try Groq Cloud STT first (fast, no local model needed)
-    try:
-        text = await transcribe_audio_groq(file_path)
-        if text and not text.startswith("[Error"):
-            return text
-    except Exception as e:
-        logger.warning(f"Groq Cloud STT failed, falling back to local Whisper: {e}")
-    
-    # 2. Fallback to local faster-whisper
-    try:
+async def transcribe_audio(file_path: str, language: str | None = None) -> str:
+    """Transcribe audio locally with faster-whisper.
+
+    Fully self-hosted: no cloud API, no key, no quota. Transcription is CPU-bound
+    so it runs in a worker thread to avoid blocking the event loop.
+
+    `language` is an ISO-639-1 hint (e.g. "en", "hi", "te"). Pass None to let
+    faster-whisper auto-detect, which is required for the non-English voices —
+    hardcoding "en" mistranscribed everything else.
+    """
+    def _transcribe_sync() -> str:
         model = get_local_model()
-        logger.info(f"Transcribing {file_path} locally with {MODEL_SIZE}...")
-        segments, info = model.transcribe(
-            file_path, 
-            beam_size=1, 
-            language="en", 
-            vad_filter=True,
-            vad_parameters=dict(min_silence_duration_ms=500)
+        logger.info(
+            f"Transcribing {file_path} locally with {MODEL_SIZE} "
+            f"(language={language or 'auto'})..."
         )
-        text = " ".join([s.text for s in segments])
-        return text.strip()
+        segments, _info = model.transcribe(
+            file_path,
+            beam_size=1,
+            language=language,
+            vad_filter=True,
+            vad_parameters=dict(min_silence_duration_ms=500),
+        )
+        return " ".join(s.text for s in segments).strip()
+
+    try:
+        return await asyncio.to_thread(_transcribe_sync)
     except Exception as e:
-        logger.error(f"Local Transcription also failed: {e}")
+        logger.error(f"Local transcription failed: {e}")
         return "[Error: Voice Transcription failed]"
 
 def _chunk_text(text: str, max_chars: int = 180):

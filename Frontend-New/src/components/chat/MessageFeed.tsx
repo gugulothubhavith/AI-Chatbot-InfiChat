@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useChatStore } from "@/stores/chat";
 import { Markdown } from "./Markdown";
-import { RefreshCw, Copy, Pencil, Check, X, Globe } from "lucide-react";
+import { RefreshCw, Copy, Pencil, Check, X, Globe, Volume2, Square, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { tapProps } from "@/lib/motion";
 import { useModelStore, MODELS } from "@/stores/model";
 import { toast } from "sonner";
 import { Logo } from "@/components/brand/Logo";
+import { useTtsStore, resolveVoiceId } from "@/stores/tts";
+import { useSettingsStore } from "@/stores/settings";
 
 export function MessageFeed({ streamSlot }: { streamSlot?: React.ReactNode }) {
   const conv = useChatStore((s) => s.conversations.find((c) => c.id === s.activeId));
@@ -18,6 +20,16 @@ export function MessageFeed({ streamSlot }: { streamSlot?: React.ReactNode }) {
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+
+  const ttsActiveId = useTtsStore((s) => s.activeId);
+  const ttsLoading = useTtsStore((s) => s.loading);
+  const speak = useTtsStore((s) => s.speak);
+  const stopTts = useTtsStore((s) => s.stop);
+  const voiceProfile = useSettingsStore((s) => s.voiceProfile);
+
+  // Stop any in-flight speech when the feed unmounts (route change / logout) so
+  // audio never outlives the view that started it.
+  useEffect(() => stopTts, [stopTts]);
 
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -142,19 +154,25 @@ export function MessageFeed({ streamSlot }: { streamSlot?: React.ReactNode }) {
                   {typeof m.latencyMs === "number" && <span>· {(m.latencyMs / 1000).toFixed(1)}s</span>}
                   <motion.button
                     {...tapProps}
-                    onClick={() => {
-                      if ("speechSynthesis" in window) {
-                        window.speechSynthesis.cancel();
-                        const utterance = new SpeechSynthesisUtterance(m.content);
-                        window.speechSynthesis.speak(utterance);
-                        toast("Playing message");
-                      }
-                    }}
-                    className="ml-1 flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-surface-2 hover:text-foreground"
-                    aria-label="Read aloud"
+                    onClick={() => speak(m.id, m.content, resolveVoiceId(voiceProfile))}
+                    className={`ml-1 flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-surface-2 hover:text-foreground ${
+                      ttsActiveId === m.id ? "text-brand" : ""
+                    }`}
+                    aria-label={ttsActiveId === m.id ? "Stop reading" : "Read aloud"}
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>
-                    Read
+                    {ttsActiveId === m.id && ttsLoading ? (
+                      <>
+                        <Loader2 className="h-3 w-3 animate-spin" /> Loading
+                      </>
+                    ) : ttsActiveId === m.id ? (
+                      <>
+                        <Square className="h-3 w-3 fill-current" /> Stop
+                      </>
+                    ) : (
+                      <>
+                        <Volume2 className="h-3 w-3" /> Read
+                      </>
+                    )}
                   </motion.button>
                   {isLastAssistant && (
                     <motion.button
