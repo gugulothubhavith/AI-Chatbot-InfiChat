@@ -7,17 +7,66 @@ from fastapi import Request, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 from slowapi import Limiter
-from slowapi.util import get_remote_address
-from functools import wraps
-import time
+import hashlib
 import logging
 import secrets
-import base64
+
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+
+# --- Rate limit key ---------------------------------------------------------
+# The default slowapi key_func (get_remote_address) reads request.client.host,
+# which behind a reverse proxy (nginx, Cloudflare) is the PROXY's IP — so every
+# user collapses into a single bucket and the limits are meaningless. Worse,
+# naively trusting X-Forwarded-For lets any client spoof the header to evade or
+# frame others' limits.
+#
+# This key func fixes both:
+#   * Authenticated callers are keyed on their identity (JWT subject or the
+#     personal-access-token hash), so limits are genuinely per-user regardless
+#     of source IP or NAT.
+#   * Anonymous callers are keyed on their real IP, and X-Forwarded-For is
+#     honoured ONLY when the immediate peer is a configured trusted proxy.
+def _client_ip(request: Request) -> str:
+    """Best-effort real client IP, trusting XFF only from known proxies."""
+    peer = request.client.host if request.client else "127.0.0.1"
+    trusted = settings.trusted_proxy_ips
+    if trusted and peer in trusted:
+        forwarded = request.headers.get("X-Forwarded-For")
+        if forwarded:
+            # Left-most entry is the originating client as recorded by our proxy.
+            return forwarded.split(",")[0].strip() or peer
+    return peer
+
+
+def rate_limit_key(request: Request) -> str:
+    """Per-caller rate-limit bucket key.
+
+    Keys on authenticated identity when present, else on the proxy-aware
+    client IP. Token decoding here is local and cheap (no DB); an unparseable
+    token simply falls through to IP-based keying.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:].strip()
+        if token.startswith("sk_infi_"):
+            # Don't put the raw key in a bucket name; a stable hash prefix is
+            # enough to isolate one API key from another.
+            return "pat:" + hashlib.sha256(token.encode()).hexdigest()[:32]
+        try:
+            from app.core.auth import decode_token
+            payload = decode_token(token)
+            if payload and payload.get("sub"):
+                return "user:" + str(payload["sub"])
+        except Exception:
+            pass
+    return "ip:" + _client_ip(request)
+
+
 # --- Rate Limiter ---
-limiter = Limiter(key_func=get_remote_address)
+limiter = Limiter(key_func=rate_limit_key)
 
 RATE_LIMITS = {
     "auth": "5/minute",
@@ -27,17 +76,6 @@ RATE_LIMITS = {
     "rag_upload": "10/hour",
     "image_generate": "10/minute",
 }
-
-
-def rate_limit_by_type(limit_type: str):
-    """Decorator for rate limiting by feature type"""
-    def decorator(func):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            limit = RATE_LIMITS.get(limit_type, "100/hour")
-            return await func(*args, **kwargs)
-        return wrapper
-    return decorator
 
 
 # --- Security Headers Middleware ---

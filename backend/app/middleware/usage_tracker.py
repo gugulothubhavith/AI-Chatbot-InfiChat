@@ -6,10 +6,19 @@ Intercepts API calls to:
 3. Return 402/429 with upgrade info if limits exceeded
 4. Record usage after successful responses
 
-NOTE: This middleware decodes JWT independently since middleware runs
-before route-level Depends() resolvers.
+NOTE: This middleware resolves the caller independently since middleware runs
+before route-level Depends() resolvers. It understands both JWT bearer tokens
+and personal access tokens (``sk_infi_`` prefix) so API-key traffic is metered
+the same as browser traffic.
+
+Fail-closed policy: metering is a paid-plan control. If we cannot determine a
+caller's entitlements because the database or a limit check errors out, we
+return 503 rather than silently granting free, unmetered access. The one
+deliberate "allow" path is a fresh install with no plans seeded yet, which the
+subscription service signals explicitly (not via an exception).
 """
 
+import hashlib
 import json
 import logging
 import time
@@ -40,9 +49,32 @@ SKIP_PATHS = {
 # Path prefixes to track
 TRACK_PREFIXES = ("/api/v1/", "/chat/", "/research/", "/thinking/", "/code/", "/image/", "/rag/", "/voice/")
 
+_SERVICE_UNAVAILABLE = Response(
+    content=json.dumps({
+        "detail": "Usage metering is temporarily unavailable. Please retry shortly.",
+        "code": "METERING_UNAVAILABLE",
+    }),
+    status_code=503,
+    media_type="application/json",
+)
 
-def _get_user_id_from_request(request: Request) -> Optional[str]:
-    """Extract user ID from JWT token in Authorization header."""
+
+def _service_unavailable() -> Response:
+    # Return a fresh Response each time — Starlette Responses are single-use.
+    return Response(
+        content=_SERVICE_UNAVAILABLE.body,
+        status_code=503,
+        media_type="application/json",
+    )
+
+
+def _resolve_user_id(request: Request, db) -> Optional[str]:
+    """Resolve the caller's user id from a JWT or personal access token.
+
+    Returns None only when there is no usable credential. Raises on database
+    errors so the caller can fail closed rather than mistaking an outage for an
+    anonymous request.
+    """
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
         return None
@@ -51,10 +83,24 @@ def _get_user_id_from_request(request: Request) -> Optional[str]:
     if not token:
         return None
 
+    if token.startswith("sk_infi_"):
+        # Personal access token — hash and look up the owner. A DB error here
+        # propagates so dispatch() fails closed.
+        from app.models.api_keys import PersonalAccessToken
+
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        pat = db.query(PersonalAccessToken).filter(
+            PersonalAccessToken.token_hash == token_hash,
+            PersonalAccessToken.is_active == True,  # noqa: E712
+        ).first()
+        if not pat:
+            return None
+        return str(pat.user_id)
+
+    # JWT — decode is local and needs no database.
     payload = decode_token(token)
     if not payload:
         return None
-
     return payload.get("sub")
 
 
@@ -77,27 +123,42 @@ class UsageTrackingMiddleware(BaseHTTPMiddleware):
         if path.startswith("/ws"):
             return await call_next(request)
 
-        # Extract user from JWT
-        user_id = _get_user_id_from_request(request)
-        if not user_id:
-            return await call_next(request)
-
-        # Determine feature from path
+        # Determine feature from path before touching the DB.
         feature = get_feature_from_path(path)
         if not feature:
             return await call_next(request)
 
-        # Graceful degradation — if DB/subscription tables aren't ready, allow request
+        # Open a session. If the primary DB is unavailable we cannot know the
+        # caller's entitlements, so we refuse the request (fail closed) instead
+        # of handing out free access.
         try:
             from app.database.db import SessionLocal
             db = SessionLocal()
         except Exception as e:
-            logger.warning(f"UsageTracking: DB not available ({e}), allowing request through")
-            return await call_next(request)
+            logger.error(f"UsageTracking: DB unavailable, refusing request: {e}")
+            return _service_unavailable()
 
         try:
-            # Check feature access
-            has_access = check_feature_access(user_id, feature, db)
+            # Resolve the caller. Unauthenticated requests are passed through so
+            # the route's own auth dependency can issue the correct 401 — the
+            # firewall/auth layer owns that decision, not metering.
+            try:
+                user_id = _resolve_user_id(request, db)
+            except Exception as e:
+                logger.error(f"UsageTracking: credential lookup failed, refusing request: {e}")
+                return _service_unavailable()
+
+            if not user_id:
+                return await call_next(request)
+
+            # Entitlement + limit checks. A raised exception here means we
+            # genuinely don't know the caller's limits — fail closed.
+            try:
+                has_access = check_feature_access(user_id, feature, db)
+            except Exception as e:
+                logger.error(f"UsageTracking: feature-access check failed, refusing request: {e}")
+                return _service_unavailable()
+
             if not has_access:
                 return Response(
                     content=json.dumps({
@@ -113,8 +174,12 @@ class UsageTrackingMiddleware(BaseHTTPMiddleware):
                     headers={"X-Upgrade-Required": "true"},
                 )
 
-            # Check usage limits
-            allowed, remaining, limit = check_usage_limit(user_id, feature, db)
+            try:
+                allowed, remaining, limit = check_usage_limit(user_id, feature, db)
+            except Exception as e:
+                logger.error(f"UsageTracking: usage-limit check failed, refusing request: {e}")
+                return _service_unavailable()
+
             if not allowed:
                 return Response(
                     content=json.dumps({
@@ -136,7 +201,7 @@ class UsageTrackingMiddleware(BaseHTTPMiddleware):
                     },
                 )
 
-            # Process the request
+            # Process the request exactly once.
             start_time = time.time()
             response = await call_next(request)
             elapsed = time.time() - start_time
@@ -146,7 +211,9 @@ class UsageTrackingMiddleware(BaseHTTPMiddleware):
             response.headers["X-Usage-Remaining"] = str(max(0, remaining - 1))
             response.headers["X-Usage-Limit"] = str(limit)
 
-            # Record usage for successful responses
+            # Record usage for successful responses. A recording failure must
+            # not fail the already-served request, so it is logged and
+            # swallowed here (and only here).
             if 200 <= response.status_code < 400:
                 try:
                     record_usage(user_id, feature, db=db)
@@ -154,10 +221,6 @@ class UsageTrackingMiddleware(BaseHTTPMiddleware):
                     logger.error(f"Usage recording failed: {e}")
 
             return response
-        except Exception as e:
-            # ANY failure in subscription checking = allow the request through
-            logger.warning(f"UsageTracking error (allowing request): {e}")
-            return await call_next(request)
         finally:
             try:
                 db.close()

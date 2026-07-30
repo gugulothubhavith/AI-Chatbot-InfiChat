@@ -1,5 +1,9 @@
 """Web Search API — Fast SSE streaming endpoint."""
 
+import asyncio
+import json
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -8,7 +12,18 @@ from sqlalchemy.orm import Session
 from app.models.chat import ChatMessage, ChatSession
 from app.services.web_search.orchestrator import run_web_search
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+
+def _sse(payload: dict) -> str:
+    """Serialise an SSE data frame safely.
+
+    Hand-building JSON with f-strings let raw exception text (quotes, newlines)
+    break the frame and leak internals to the client. json.dumps escapes it.
+    """
+    return f"data: {json.dumps(payload)}\n\n"
 
 
 class WebSearchRequest(BaseModel):
@@ -47,9 +62,8 @@ async def stream_web_search(request: WebSearchRequest, user=Depends(get_current_
         db.commit()
     except Exception as e:
         db.rollback()
-        print(f"Error saving web search prompt: {e}")
+        logger.error(f"Error saving web search prompt: {e}")
 
-    import asyncio
     from app.database.db import SessionLocal
     queue = asyncio.Queue()
 
@@ -58,12 +72,11 @@ async def stream_web_search(request: WebSearchRequest, user=Depends(get_current_
         try:
             bg_db = SessionLocal()
             from app.core.config import settings
-            model_to_use = request.model or getattr(settings, "DEFAULT_CHAT_MODEL", "meta-llama/llama-3.1-8b-instruct")
-            
+            model_to_use = request.model or getattr(settings, "WEB_SEARCH_MODEL", "nvidia/llama-3_3-nemotron-super-49b-v1_5")
+
             async for event in run_web_search(request.query.strip(), model=model_to_use):
                 if event.startswith("data: "):
                     try:
-                        import json
                         data_str = event[6:].strip()
                         if data_str:
                             data = json.loads(data_str)
@@ -73,7 +86,7 @@ async def stream_web_search(request: WebSearchRequest, user=Depends(get_current_
                                 if citations:
                                     cit_str = "\n".join([f"[{c.get('index')}] [{c.get('title')}]({c.get('url')})" for c in citations])
                                     report_content += "\n\n---\n**Sources:**\n" + cit_str
-                                
+
                                 asst_msg = ChatMessage(
                                     session_id=session_id,
                                     role="assistant",
@@ -84,14 +97,15 @@ async def stream_web_search(request: WebSearchRequest, user=Depends(get_current_
                                 bg_db.commit()
                     except Exception as inner_e:
                         bg_db.rollback()
-                        print(f"Failed to save web search report: {inner_e}")
-                
+                        logger.error(f"Failed to save web search report: {inner_e}")
+
                 await queue.put(event)
-            
+
         except Exception as e:
-            import traceback
-            traceback.print_exc()
-            await queue.put(f"data: {{\"type\": \"error\", \"message\": \"{str(e)}\"}}\n\n")
+            # Log the detail server-side; send the client a generic, correctly
+            # escaped error frame so nothing internal leaks into the stream.
+            logger.exception("Web search stream failed")
+            await queue.put(_sse({"type": "error", "message": "Web search failed. Please try again."}))
         finally:
             if bg_db:
                 bg_db.close()
