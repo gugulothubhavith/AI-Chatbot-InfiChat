@@ -18,6 +18,7 @@ from app.models.rag_analytics import RAGEvaluation
 from app.models.incidents import IncidentTicket, AutoHealingEvent
 from app.models.system import SystemUpdate
 from app.models.subscription import SubscriptionPlan, UserSubscription, UsageRecord
+from app.models.api_keys import PersonalAccessToken
 
 __all__ = [
     "Base",
@@ -54,5 +55,6 @@ __all__ = [
     "SystemUpdate",
     "SubscriptionPlan",
     "UserSubscription",
-    "UsageRecord"
+    "UsageRecord",
+    "PersonalAccessToken"
 ]

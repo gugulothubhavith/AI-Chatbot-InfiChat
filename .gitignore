@@ -54,8 +54,10 @@ backend/migrate_releases.py
 backend/update_json_parsing.py
 backend/verify_imports.py
 
-# Alembic migration history (contains schema evolution logic)
-backend/alembic/
+# Alembic: track the environment and migration history (they ARE the schema
+# of record in production), but not local caches.
+backend/alembic/**/__pycache__/
+backend/alembic/versions/*.pyc
 
 # SQLite database files (local dev)
 *.db

@@ -91,8 +91,38 @@ def get_db():
         db.close()
 
 
+def _run_migrations() -> None:
+    """Run ``alembic upgrade head`` programmatically against the live engine.
+
+    Invoked at startup in production so a fresh database is built from
+    migrations and existing ones pick up new revisions. Under multiple workers
+    the first to acquire the migration lock applies changes; the rest see head
+    and no-op, which Alembic handles safely.
+    """
+    from alembic import command
+    from alembic.config import Config
+
+    backend_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    cfg = Config(os.path.join(backend_root, "alembic.ini"))
+    cfg.set_main_option("script_location", os.path.join(backend_root, "alembic"))
+    # env.py resolves the URL itself via _resolve_db_url(), keeping this in sync
+    # with the engine the app actually uses.
+    command.upgrade(cfg, "head")
+    logger.info("Database migrations applied (alembic upgrade head).")
+
+
 async def init_db():
-    """Create all tables and run auto-migrations."""
+    """Bring the database schema up to date.
+
+    Production: migrations are authoritative. We run ``alembic upgrade head``
+    so the schema is built and evolved deterministically. create_all is NOT
+    used in production because it silently ignores drift on existing tables —
+    it never ALTERs, so a new column (e.g. consent tracking) would simply be
+    missing and fail at runtime.
+
+    Development / SQLite fallback: keep create_all plus the lightweight ad-hoc
+    column adds for zero-friction local iteration.
+    """
     from app.models.memory import Memory
     from app.models.file import File
     from app.models.chat import ChatSession, ChatMessage, SharedChat
@@ -102,6 +132,11 @@ async def init_db():
     from app.models.admin import AdminProfile
 
     loop = asyncio.get_running_loop()
+
+    if settings.is_production:
+        await loop.run_in_executor(None, _run_migrations)
+        return
+
     await loop.run_in_executor(None, Base.metadata.create_all, engine)
 
     # Auto-migration (safe for both Postgres and SQLite)
