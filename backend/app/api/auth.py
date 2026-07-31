@@ -266,7 +266,7 @@ def login(request: Request, response: Response, payload: UserLogin, background_t
             except Exception:
                 db.rollback()
         else:
-            raise HTTPException(status_code=400, detail="Invalid credentials")
+            raise HTTPException(status_code=401, detail="Invalid credentials")
 
     if not user.hashed_password:
         raise HTTPException(status_code=400, detail="Account has no password set. Use OTP login by requesting an OTP directly via /request-otp.")
@@ -334,8 +334,10 @@ def login(request: Request, response: Response, payload: UserLogin, background_t
             "permissions": list(set(perms))
         }
 
-    # WRONG PASSWORD
-    raise HTTPException(status_code=400, detail="Invalid password")
+    # WRONG PASSWORD — 401, not 400: the request was well-formed, the
+    # credentials were not. The message is identical to the unknown-email case
+    # so this endpoint cannot be used to enumerate registered addresses.
+    raise HTTPException(status_code=401, detail="Invalid credentials")
 
 @router.post("/refresh", response_model=AuthResponse)
 @limiter.limit("10/minute")
@@ -553,6 +555,7 @@ def register(request: Request, response: Response, payload: UserCreate, db: Sess
         "refresh_token": refresh_token,
         "token_type": "bearer",
         "user_id": str(new_user.id),
+        "name": new_user.username,
         "email": new_user.email,
         "avatar_url": new_user.avatar_url,
         "is_new_user": True,

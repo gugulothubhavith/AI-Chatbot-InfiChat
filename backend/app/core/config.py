@@ -79,6 +79,10 @@ class Settings(BaseSettings):
         return self.ENVIRONMENT.lower() == "production"
 
     @property
+    def is_testing(self) -> bool:
+        return self.ENVIRONMENT.lower() in ("test", "testing")
+
+    @property
     def cors_origins(self) -> List[str]:
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
 

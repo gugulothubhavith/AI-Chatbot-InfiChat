@@ -66,7 +66,12 @@ def rate_limit_key(request: Request) -> str:
 
 
 # --- Rate Limiter ---
-limiter = Limiter(key_func=rate_limit_key)
+# Disabled under ENVIRONMENT=test only. The suite drives many requests from a
+# single client IP, so they share one bucket and trip limits that exist for
+# real abuse (registration is 3/minute). Loosening the production limit to suit
+# the tests would weaken an actual control; switching the limiter off in the
+# test environment leaves it exactly as shipped everywhere else.
+limiter = Limiter(key_func=rate_limit_key, enabled=not settings.is_testing)
 
 RATE_LIMITS = {
     "auth": "5/minute",
