@@ -28,6 +28,7 @@ class SubscriptionPlan(Base):
     name = Column(String, unique=True, nullable=False)
     description = Column(String, nullable=True)
     price_monthly = Column(Integer, nullable=False, default=0)  # In INR
+    price_annual = Column(Integer, nullable=False, default=0)   # In INR
 
     # Feature limits as JSON — controls ALL feature quotas
     limits = Column(JSONB, nullable=False, default=dict)
