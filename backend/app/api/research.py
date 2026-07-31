@@ -1,12 +1,21 @@
 """Deep Research API — SSE streaming endpoint."""
 
+import asyncio
+import json
+import logging
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from app.core.deps import get_current_user, get_db
+from app.core.sse import END_OF_STREAM, SSE_HEADERS, sse_frame, sse_stream
+from app.database.db import SessionLocal
 from sqlalchemy.orm import Session
 from app.models.chat import ChatMessage, ChatSession
 from app.services.deep_research.orchestrator import run_pipeline
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -38,7 +47,6 @@ async def stream_research(request: ResearchRequest, user=Depends(get_current_use
 
     session_id = request.conversation_id
     if not session_id:
-        import uuid
         new_session = ChatSession(
             id=str(uuid.uuid4()),
             user_id=user.id,
@@ -58,22 +66,17 @@ async def stream_research(request: ResearchRequest, user=Depends(get_current_use
         db.commit()
     except Exception as e:
         db.rollback()
-        print(f"Error saving research prompt: {e}")
+        logger.error(f"Error saving research prompt: {e}")
 
-    import asyncio
-    from app.database.db import SessionLocal
-    queue = asyncio.Queue()
-
-    async def background_research():
+    async def background_research(queue: asyncio.Queue) -> None:
         bg_db = None
         try:
             bg_db = SessionLocal()
             from app.core.config import settings
-            model_to_use = request.model or getattr(settings, "DEFAULT_CHAT_MODEL", "meta-llama/llama-3.1-8b-instruct")
+            model_to_use = request.model or getattr(settings, "DEEP_RESEARCH_DEFAULT_MODEL", "nvidia/nemotron-3-ultra-550b-a55b")
             async for event in run_pipeline(request.query.strip(), model=model_to_use):
                 if event.startswith("data: "):
                     try:
-                        import json
                         data_str = event[6:].strip()
                         if data_str:
                             data = json.loads(data_str)
@@ -94,40 +97,27 @@ async def stream_research(request: ResearchRequest, user=Depends(get_current_use
                                 bg_db.commit()
                     except Exception as inner_e:
                         bg_db.rollback()
-                        print(f"Failed to save deep research report: {inner_e}")
-                
+                        logger.error(f"Failed to save deep research report: {inner_e}")
+
                 await queue.put(event)
-            
-            await queue.put(None) # Signal end of stream
-        except Exception as e:
-            import json
-            await queue.put(f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n")
-            await queue.put(None)
+        except asyncio.CancelledError:
+            # Client went away; unwind quietly so `finally` closes the session.
+            raise
+        except Exception:
+            # Log the detail server-side and hand the client a generic frame so
+            # nothing internal leaks into the stream.
+            logger.exception("Deep research stream failed")
+            await queue.put(sse_frame({
+                "type": "error",
+                "message": "Deep research failed. Please try again.",
+            }))
         finally:
             if bg_db:
                 bg_db.close()
-
-    # Start background task independent of client connection
-    asyncio.create_task(background_research())
-
-    async def event_stream():
-        try:
-            while True:
-                event = await queue.get()
-                if event is None:
-                    break
-                yield event
-        except asyncio.CancelledError:
-            print(f"Client disconnected for session {session_id}, deep research continues in background.")
-            raise
+            await queue.put(END_OF_STREAM)
 
     return StreamingResponse(
-        event_stream(),
+        sse_stream(background_research, label=f"deep-research[{session_id}]"),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-            "X-Chat-Session-ID": str(session_id),
-        },
+        headers={**SSE_HEADERS, "X-Chat-Session-ID": str(session_id)},
     )

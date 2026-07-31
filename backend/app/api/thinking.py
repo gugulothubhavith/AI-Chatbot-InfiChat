@@ -1,14 +1,23 @@
 """Deep Thinking API — SSE streaming endpoint for chain-of-thought reasoning."""
 
+import asyncio
+import json
+import logging
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, get_db
+from app.core.sse import END_OF_STREAM, SSE_HEADERS, sse_frame, sse_stream
+from app.database.db import SessionLocal
 from app.models.user import User
 from app.models.chat import ChatMessage, ChatSession
 from app.services.deep_thinking.orchestrator import run_thinking_pipeline
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -44,7 +53,6 @@ async def stream_thinking(
     # Create or use existing session
     session_id = request.conversation_id
     if not session_id:
-        import uuid
         new_session = ChatSession(
             id=str(uuid.uuid4()),
             user_id=user.id,
