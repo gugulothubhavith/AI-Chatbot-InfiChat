@@ -8,6 +8,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from app.core.concurrency import deep_research_limiter, limit_concurrency
 from app.core.deps import get_current_user, get_db
 from app.core.sse import END_OF_STREAM, SSE_HEADERS, sse_frame, sse_stream
 from app.database.db import SessionLocal
@@ -26,11 +27,16 @@ class ResearchRequest(BaseModel):
     model: str | None = None
 
 
-@router.post("/research/stream")
+@router.post("/research/stream", dependencies=[Depends(limit_concurrency(deep_research_limiter))])
 async def stream_research(request: ResearchRequest, user=Depends(get_current_user), db: Session = Depends(get_db)):
     """
     Stream a deep research pipeline via Server-Sent Events.
-    
+
+    A user may have only one run in flight at a time — the pipeline holds
+    several key-pool leases for minutes, so an unbounded fan-out from one
+    account starves everyone else. Exceeding it is a 429 before the stream
+    opens, not a stalled connection.
+
     The client receives events in the format:
         data: {"type": "agent_status", "agent": "IntentAnalysis", "status": "running", ...}
     
