@@ -14,35 +14,58 @@ logger = logging.getLogger(__name__)
 async def generate_image(prompt: str, user: User) -> dict:
     """Generate image using Hugging Face (default), SDXL, or mock fallback."""
 
-    # 1. Try Hugging Face Inference API
+    # 1. Try NVIDIA API or Hugging Face Inference API
     try:
-        api_key = getattr(settings, "HUGGINGFACE_API_KEY", None)
-        model_id = getattr(settings, "HUGGINGFACE_IMAGE_MODEL", "black-forest-labs/FLUX.1-schnell")
+        api_key = getattr(settings, "DEFAULT_CHAT_API_KEY", None)
+        model_id = getattr(settings, "IMAGE_GENERATION_MODEL", "black-forest-labs/flux-1-schnell")
         
         if api_key:
-            url = f"https://router.huggingface.co/hf-inference/models/{model_id}"
-            headers = {"Authorization": f"Bearer {api_key}"}
-            payload = {"inputs": prompt}
+            is_nvidia = api_key.startswith("nvapi")
             
-            logger.info(f"Generating image via Hugging Face (model={model_id})...")
+            if is_nvidia:
+                url = "https://integrate.api.nvidia.com/v1/images/generations"
+                headers = {
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json"
+                }
+                payload = {
+                    "model": model_id,
+                    "prompt": prompt,
+                    "response_format": "b64_json"
+                }
+                logger.info(f"Generating image via NVIDIA API (model={model_id})...")
+            else:
+                url = f"https://api.airforce/v1/imagine?prompt={urllib.parse.quote(prompt)}"
+                headers = {}
+                payload = {}
+                logger.info(f"Generating image via fallback...")
 
             async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
                 response = await client.post(url, headers=headers, json=payload)
                 if response.status_code == 200:
-                    image_base64 = base64.b64encode(response.content).decode()
+                    if is_nvidia:
+                        data = response.json()
+                        image_base64 = data["data"][0]["b64_json"]
+                        provider = "nvidia"
+                    else:
+                        image_base64 = base64.b64encode(response.content).decode()
+                        provider = "huggingface"
+                        
                     return {
                         "status": "success",
                         "image_url": f"data:image/jpeg;base64,{image_base64}",
-                        "provider": "huggingface",
+                        "provider": provider,
                     }
                 else:
-                    logger.warning(f"Hugging Face returned status {response.status_code} ({response.text[:200]}). Falling back...")
+                    logger.warning(f"API returned status {response.status_code} ({response.text[:200]}). Falling back...")
         else:
-            logger.warning("No HUGGINGFACE_API_KEY set. Skipping Hugging Face.")
+            logger.warning("No API KEY set. Skipping primary provider.")
     except Exception as e:
-        logger.warning(f"Hugging Face failed: {e}. Falling back...")
+        logger.warning(f"Image generation failed: {e}. Falling back...")
 
-    # 2. Try Local/External SDXL
+
+
+    # 3. Try Local/External SDXL
     sdxl_url = getattr(settings, "SDXL_URL", None)
     if sdxl_url:
         try:
@@ -85,7 +108,7 @@ async def generate_image(prompt: str, user: User) -> dict:
         draw.text((width // 2, height // 2 - 40), label, fill=(156, 163, 175), anchor="mm")
         prompt_short = (prompt[:60] + "...") if len(prompt) > 60 else prompt
         draw.text((width // 2, height // 2 + 20), f'"{prompt_short}"', fill=(209, 213, 219), anchor="mm")
-        draw.text((width // 2, height // 2 + 80), "Pollinations.ai unreachable", fill=(99, 102, 241), anchor="mm")
+        draw.text((width // 2, height // 2 + 80), "Image Generation Failed", fill=(99, 102, 241), anchor="mm")
 
         buffered = BytesIO()
         img.save(buffered, format="PNG")

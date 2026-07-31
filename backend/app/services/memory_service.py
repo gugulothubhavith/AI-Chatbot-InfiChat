@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 from app.models.memory import Memory
 from app.services.llm_router import call_llm
 from app.database.db import SessionLocal
+from app.core.config import settings
+import random
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +25,15 @@ async def extract_and_store_memories(user_id: int, user_message: str, assistant_
             "Return ONLY the extracted facts as a bulleted list. If there are no new important facts, return 'NO_MEMORY'.\n"
         )
         
+        api_keys = [settings.DEFAULT_CHAT_API_KEY, getattr(settings, "PLANNER_API_KEY", None), getattr(settings, "CODER_API_KEY", None)]
+        valid_keys = list(set(k for k in api_keys if k and k.startswith("nvapi")))
+        chosen_key = random.choice(valid_keys) if valid_keys else settings.DEFAULT_CHAT_API_KEY
+
         payload = {
-            "model": "memory_extractor", # mapped to Llama-3.1-8B in router
+            "model": getattr(settings, "MEMORY_EXTRACTOR_MODEL", "nvidia/nemotron-3-ultra-550b-a55b"),
             "messages": [{"role": "user", "content": prompt}],
-            "stream": False
+            "stream": False,
+            "api_key": chosen_key
         }
         
         response = await call_llm("chat", payload)

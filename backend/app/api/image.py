@@ -56,52 +56,25 @@ async def image_generate(
     """Generate image using Hugging Face Inference API with PIL placeholder fallback."""
     logger.info(f"Image generation request from {user.username}: {payload.prompt}")
 
-    api_key = getattr(settings, "HUGGINGFACE_API_KEY", None)
-    model_id = getattr(settings, "HUGGINGFACE_IMAGE_MODEL", "black-forest-labs/FLUX.1-schnell")
-    
-    api_url = f"https://router.huggingface.co/hf-inference/models/{model_id}"
-    
-    headers = {}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-    else:
-        logger.warning("No Hugging Face API key provided. Image generation may fail.")
-        
     image_base64 = None
     model_used = None
 
+    logger.info("Requesting image from Pollinations AI...")
     try:
-        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
-            logger.info(f"Requesting Hugging Face ({model_id})...")
-            try:
-                response = await client.post(api_url, headers=headers, json={"inputs": payload.prompt})
-                logger.info(f"Hugging Face status: {response.status_code}")
-                content_type = response.headers.get("content-type", "")
-                if response.status_code == 200 and content_type.startswith("image/"):
-                    image_base64 = base64.b64encode(response.content).decode()
-                    model_used = model_id
-                else:
-                    logger.warning(f"Hugging Face returned {response.status_code} ({response.text[:200]}). Trying fallback...")
-            except Exception as e:
-                logger.warning(f"Hugging Face error: {e}. Trying fallback...")
-                
-            if not image_base64:
-                # Fallback to Airforce API
-                logger.info("Requesting Airforce API fallback...")
-                encoded_prompt = urllib.parse.quote(payload.prompt)
-                airforce_url = f"https://api.airforce/v1/imagine?prompt={encoded_prompt}"
-                airforce_res = await client.get(airforce_url)
-                logger.info(f"Airforce status: {airforce_res.status_code}")
-                af_content_type = airforce_res.headers.get("content-type", "")
-                
-                if airforce_res.status_code == 200 and af_content_type.startswith("image/"):
-                    image_base64 = base64.b64encode(airforce_res.content).decode()
-                    model_used = "airforce-imagine"
-                else:
-                    logger.warning(f"Airforce API returned {airforce_res.status_code} ({af_content_type})")
-                    
+        encoded_prompt = urllib.parse.quote(payload.prompt)
+        width = payload.width if payload.width else 1024
+        height = payload.height if payload.height else 1024
+        pollinations_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={width}&height={height}&model=flux&nologo=true"
+        
+        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as p_client:
+            response = await p_client.get(pollinations_url)
+            if response.status_code == 200:
+                image_base64 = base64.b64encode(response.content).decode('utf-8')
+                model_used = "pollinations.ai/flux"
+            else:
+                logger.warning(f"Pollinations AI failed with status: {response.status_code}")
     except Exception as e:
-        logger.warning(f"Image APIs total failure: {e}")
+        logger.error(f"Pollinations AI error: {e}")
 
     if image_base64:
         image_url = f"data:image/jpeg;base64,{image_base64}"
@@ -153,7 +126,7 @@ async def image_generate(
     # Fallback placeholder — never crash the frontend
     img_b64 = _make_placeholder_image(
         payload.prompt, payload.width, payload.height,
-        "Pollinations.ai unreachable"
+        "Image Generation Failed"
     )
     return {
         "image_url": f"data:image/png;base64,{img_b64}",

@@ -206,8 +206,13 @@ def _get_backend():
     # ChromaDB backend
     if _chroma_collection_instance is None:
         try:
-            host = os.getenv("CHROMA_URL", "http://chromadb:8000").replace("http://", "").split(":")[0]
-            port = int(os.getenv("CHROMA_URL", "http://chromadb:8000").split(":")[-1]) if ":" in os.getenv("CHROMA_URL", "") else 8000
+            # Resolve from CHROMA_URL, or CHROMA_HOST/CHROMA_PORT when the
+            # deployment supplies the host/port pair (docker-compose does).
+            from urllib.parse import urlparse
+
+            parsed = urlparse(settings.chroma_endpoint)
+            host = parsed.hostname or "localhost"
+            port = parsed.port or 8000
             _chroma_client_instance = chromadb.HttpClient(
                 host=host, port=port,
                 settings=Settings(anonymized_telemetry=False)
