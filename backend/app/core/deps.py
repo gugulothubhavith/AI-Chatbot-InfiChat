@@ -16,11 +16,23 @@ from app.models.api_keys import PersonalAccessToken
 import hashlib
 from datetime import datetime, timezone
 
-async def get_current_user(
+def get_current_user(
     security_scopes: SecurityScopes,
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ) -> User:
+    """Resolve the authenticated user from a JWT or personal access token.
+
+    Deliberately a plain ``def``. This dependency runs on every authenticated
+    request and does 1-2 synchronous SQLAlchemy queries (plus a commit on the
+    API-key path). As an ``async def`` that work ran directly on the event
+    loop, so one slow query stalled every other in-flight request, including
+    active SSE streams. Declared sync, FastAPI runs it in its threadpool and
+    the loop stays free.
+
+    The engine pool (20 + 40 overflow) comfortably exceeds AnyIO's 40-thread
+    default, so the threadpool cannot exhaust connections.
+    """
     if security_scopes.scopes:
         authenticate_value = f'Bearer scope="{security_scopes.scope_str}"'
     else:
@@ -115,10 +127,15 @@ async def get_current_user(
                 
     return user
 
-async def get_current_user_optional(
+def get_current_user_optional(
     credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer(auto_error=False)),
     db: Session = Depends(get_db)
 ) -> User | None:
+    """Anonymous-tolerant variant of :func:`get_current_user`.
+
+    Sync for the same reason: it issues a blocking query and must not run on
+    the event loop.
+    """
     if not credentials:
         return None
         

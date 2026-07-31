@@ -28,7 +28,7 @@ class ResearchRequest(BaseModel):
 
 
 @router.post("/research/stream", dependencies=[Depends(limit_concurrency(deep_research_limiter))])
-async def stream_research(request: ResearchRequest, user=Depends(get_current_user), db: Session = Depends(get_db)):
+def stream_research(request: ResearchRequest, user=Depends(get_current_user), db: Session = Depends(get_db)):
     """
     Stream a deep research pipeline via Server-Sent Events.
 

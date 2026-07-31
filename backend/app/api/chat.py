@@ -17,7 +17,7 @@ from app.core.security import limiter
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
 @router.get("/sessions", response_model=List[ChatSessionSchema])
-async def list_sessions(
+def list_sessions(
     workspace: Optional[str] = Query("personal"),
     db: Session = Depends(get_db),
     user: User = Security(get_current_user, scopes=["chat:read"])
@@ -29,7 +29,7 @@ async def list_sessions(
     return sessions
 
 @router.post("/sessions", response_model=ChatSessionSchema)
-async def create_session(
+def create_session(
     payload: Optional[ChatSessionCreate] = None,
     db: Session = Depends(get_db),
     user: User = Security(get_current_user, scopes=["chat:write"])
@@ -47,7 +47,7 @@ async def create_session(
     return new_session
 
 @router.patch("/sessions/{session_id}", response_model=ChatSessionSchema)
-async def update_session(
+def update_session(
     session_id: str,
     update_data: ChatSessionUpdate,
     db: Session = Depends(get_db),
@@ -66,7 +66,7 @@ async def update_session(
     return session
 
 @router.delete("/sessions/{session_id}")
-async def delete_session(
+def delete_session(
     session_id: str,
     db: Session = Depends(get_db),
     user: User = Security(get_current_user, scopes=["chat:write"])
@@ -90,7 +90,7 @@ async def delete_session(
     return {"status": "success"}
 
 @router.get("/sessions/{session_id}/messages")
-async def list_messages(
+def list_messages(
     session_id: str,
     db: Session = Depends(get_db),
     user: User = Security(get_current_user, scopes=["chat:read"])
@@ -103,7 +103,7 @@ async def list_messages(
     return messages
 
 @router.get("/search")
-async def search_chats(
+def search_chats(
     q: str = Query(..., min_length=1),
     db: Session = Depends(get_db),
     user: User = Security(get_current_user, scopes=["chat:read"])
@@ -212,7 +212,7 @@ async def export_data(
     return data
 
 @router.post("/sessions/{session_id}/share")
-async def share_session(
+def share_session(
     session_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
@@ -244,7 +244,7 @@ async def share_session(
     return {"share_token": shared.share_token}
 
 @router.get("/shared")
-async def list_shared_chats(
+def list_shared_chats(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
@@ -261,7 +261,7 @@ async def list_shared_chats(
     ]
 
 @router.delete("/shared/{token}")
-async def unshare_chat(
+def unshare_chat(
     token: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
@@ -280,7 +280,7 @@ async def unshare_chat(
     return {"status": "success"}
 
 @router.get("/archived")
-async def list_archived_sessions(
+def list_archived_sessions(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
@@ -292,7 +292,7 @@ async def list_archived_sessions(
     return sessions
 
 @router.get("/shared/{token}")
-async def get_shared_chat(
+def get_shared_chat(
     token: str,
     db: Session = Depends(get_db)
 ):

@@ -28,14 +28,14 @@ class SnippetResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 @router.get("/", response_model=List[SnippetResponse])
-async def list_snippets(
+def list_snippets(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
     return db.query(Snippet).filter(Snippet.user_id == user.id).order_by(Snippet.created_at.desc()).all()
 
 @router.post("/", response_model=SnippetResponse)
-async def create_snippet(
+def create_snippet(
     payload: SnippetCreate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
@@ -53,7 +53,7 @@ async def create_snippet(
     return snippet
 
 @router.delete("/{snippet_id}")
-async def delete_snippet(
+def delete_snippet(
     snippet_id: str,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)

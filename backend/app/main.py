@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from app.core.config import settings
 from datetime import datetime, timezone
 from slowapi.errors import RateLimitExceeded
+import asyncio
 
 # CRITICAL: Import all models immediately to register them with SQLAlchemy/Base
 from app import models 
@@ -349,21 +350,38 @@ async def global_exception_handler(request, exc):
 
 
 @app.get("/health", tags=["Health"])
-@limiter.limit("20/minute")
+# 120/minute, not 20. This endpoint is what keeps the container alive: the
+# compose healthcheck polls it every 15s, and any orchestrator (k8s liveness +
+# readiness at 10s each), load balancer, or uptime monitor adds more. At 20/min
+# those probes collectively trip the limit, /health starts returning 429, and
+# the orchestrator kills a container that is in fact perfectly healthy — a
+# self-inflicted outage that gets worse under load. The limit is kept (rather
+# than removed) because this handler does touch Postgres and Redis, so it
+# should not be an unbounded anonymous amplifier.
+@limiter.limit("120/minute")
 async def health(request: Request):
     from app.database.db import check_db_connection
     from app.core.redis_client import redis_client
-    
+
     db_ok = await check_db_connection()
-    
-    redis_ok = False
-    try:
-        redis_ok = redis_client.ping()
-    except Exception:
-        pass
-        
+
+    # redis-py's client is synchronous, so ping() blocks the calling thread on a
+    # socket round-trip. Called inline it blocked the event loop — and the case
+    # that matters is precisely the one where Redis is unhealthy: a hung server
+    # stalls every concurrent request (including live SSE streams) until the
+    # socket times out, turning a degraded dependency into a full outage of the
+    # very endpoint meant to report it. Offloaded, a slow ping costs one worker
+    # thread and still reports "degraded".
+    def _ping() -> bool:
+        try:
+            return bool(redis_client.ping())
+        except Exception:
+            return False
+
+    redis_ok = await asyncio.to_thread(_ping)
+
     status = "ok" if (db_ok and redis_ok) else "degraded"
-    
+
     return {
         "status": status,
         "database": "connected" if db_ok else "disconnected",

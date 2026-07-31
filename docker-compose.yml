@@ -87,10 +87,15 @@ services:
       - SEARXNG_URL=http://searxng:8080
       - UNSTRUCTURED_URL=http://unstructured-api:8000
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      # Uses python, not curl: curl is not installed in the backend image, so
+      # the previous check failed every run (356 consecutive failures) and the
+      # container sat "unhealthy" while serving traffic normally. That also
+      # meant `depends_on: condition: service_healthy` could never pass.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=5).status==200 else 1)"]
       interval: 15s
       timeout: 10s
       retries: 5
+      start_period: 60s
     restart: always
 
   # 8. Unstructured API (Omni-Parser) — GPU optional
