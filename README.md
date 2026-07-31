@@ -28,8 +28,8 @@
 [![Version](https://img.shields.io/badge/Version-2.0.0-10A37F?style=flat-square)](https://github.com/gugulothubhavith/AI-Chatbot-InfiChat)
 [![Status](https://img.shields.io/badge/Status-Production--Ready-brightgreen?style=flat-square)](https://github.com/gugulothubhavith/AI-Chatbot-InfiChat)
 [![CI](https://img.shields.io/github/actions/workflow/status/gugulothubhavith/AI-Chatbot-InfiChat/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/gugulothubhavith/AI-Chatbot-InfiChat/actions)
-[![Files](https://img.shields.io/badge/Source_Files-408+-blue?style=flat-square)]()
-[![Code Lines](https://img.shields.io/badge/Lines_of_Code-50,000+-purple?style=flat-square)]()
+[![Files](https://img.shields.io/badge/Source_Files-428+-blue?style=flat-square)]()
+[![Code Lines](https://img.shields.io/badge/Lines_of_Code-180,000+-purple?style=flat-square)]()
 
 <br/>
 
@@ -170,7 +170,7 @@ InfiChat's **Smart Router** (`llm_router.py` — 20,630 bytes of routing intelli
 
 ### 🎙️ Professional Indic Voice AI (TTS / STT)
 
-InfiChat features a **best-in-class voice pipeline** tailored for multilingual Indian users, with a dedicated standalone **Voice AI Agent** module (`TTS and STT/` — 11 source files, fully independent deployment).
+InfiChat features a **best-in-class voice pipeline** tailored for multilingual Indian users, with a dedicated standalone **Voice AI Agent** module (`TTS and STT/` — 30 source files, fully independent deployment).
 
 #### Text-to-Speech (TTS) — Neural Voice Profiles
 
@@ -599,7 +599,7 @@ python -m venv venv
 .\venv\Scripts\activate          # Windows
 # source venv/bin/activate       # Linux/macOS
 
-# Install all Python dependencies (83 packages)
+# Install all Python dependencies (74 packages)
 pip install -r requirements.txt
 
 # Initialize the database (ensure PostgreSQL is running)
@@ -759,7 +759,7 @@ CORS_ORIGINS=http://localhost:5173
 
 ## 📁 Monorepo Architecture — Project Structure
 
-InfiChat is engineered as a **true enterprise monorepo** spanning 4 application layers, 25 admin modules, and **408+ source files** of custom logic.
+InfiChat is engineered as a **true enterprise monorepo** spanning 4 application layers, 25 admin modules, and **428+ source files** of custom logic.
 
 <details open>
 <summary><strong>🗺️ Complete Directory Tree</strong></summary>
@@ -778,124 +778,124 @@ AI-Chatbot-InfiChat/
 │   │   ├── __init__.py
 │   │   │
 │   │   ├── api/                             # ══ 24 Route Controllers ══
-│   │   │   ├── auth.py                      # Registration, login, logout, password reset, OTP (29,070 B)
-│   │   │   ├── oauth.py                     # Google OAuth 2.0 flow (3,480 B)
-│   │   │   ├── chat.py                      # LLM streaming chat, history, shared links (10,705 B)
-│   │   │   ├── voice.py                     # TTS synthesis, STT transcription (2,600 B)
-│   │   │   ├── rag.py                       # Document upload, knowledge base query (1,806 B)
-│   │   │   ├── code_agent.py                # Sandboxed Python execution trigger (1,823 B)
-│   │   │   ├── image.py                     # AI image generation (6,558 B)
-│   │   │   ├── research.py                  # Deep research mode endpoints (4,877 B)
-│   │   │   ├── thinking.py                  # Deep thinking mode endpoints (7,650 B)
-│   │   │   ├── snippets.py                  # Code snippet CRUD (1,953 B)
-│   │   │   ├── settings.py                  # User preferences and profile (4,679 B)
-│   │   │   ├── admin.py                     # User management, system stats (15,528 B)
-│   │   │   ├── admin_governance.py          # Governance policies, compliance (6,259 B)
-│   │   │   ├── admin_security.py            # Security config, key rotation (8,446 B)
-│   │   │   ├── admin_zero_trust.py          # Zero-trust security posture (2,933 B)
-│   │   │   ├── subscriptions.py             # Subscription plan management (7,041 B)
-│   │   │   ├── organizations.py             # Multi-tenant org management (1,775 B)
-│   │   │   ├── system.py                    # System health, metrics, diagnostics (7,896 B)
-│   │   │   ├── metrics.py                   # Prometheus metrics export (790 B)
-│   │   │   ├── proxy.py                     # API proxy endpoints (2,630 B)
-│   │   │   ├── ws_agent.py                  # WebSocket: agent communication (3,475 B)
-│   │   │   ├── ws_broadcast.py              # WebSocket: real-time broadcast (7,345 B)
-│   │   │   └── ws_code.py                   # WebSocket: live code execution (4,088 B)
+│   │   │   ├── auth.py                      # Registration, login, logout, password reset, OTP
+│   │   │   ├── oauth.py                     # Google OAuth 2.0 flow
+│   │   │   ├── chat.py                      # LLM streaming chat, history, shared links
+│   │   │   ├── voice.py                     # TTS synthesis, STT transcription
+│   │   │   ├── rag.py                       # Document upload, knowledge base query
+│   │   │   ├── code_agent.py                # Sandboxed Python execution trigger
+│   │   │   ├── image.py                     # AI image generation
+│   │   │   ├── research.py                  # Deep research mode endpoints
+│   │   │   ├── thinking.py                  # Deep thinking mode endpoints
+│   │   │   ├── snippets.py                  # Code snippet CRUD
+│   │   │   ├── settings.py                  # User preferences and profile
+│   │   │   ├── admin.py                     # User management, system stats
+│   │   │   ├── admin_governance.py          # Governance policies, compliance
+│   │   │   ├── admin_security.py            # Security config, key rotation
+│   │   │   ├── admin_zero_trust.py          # Zero-trust security posture
+│   │   │   ├── subscriptions.py             # Subscription plan management
+│   │   │   ├── organizations.py             # Multi-tenant org management
+│   │   │   ├── system.py                    # System health, metrics, diagnostics
+│   │   │   ├── metrics.py                   # Prometheus metrics export
+│   │   │   ├── proxy.py                     # API proxy endpoints
+│   │   │   ├── ws_agent.py                  # WebSocket: agent communication
+│   │   │   ├── ws_broadcast.py              # WebSocket: real-time broadcast
+│   │   │   └── ws_code.py                   # WebSocket: live code execution
 │   │   │
 │   │   ├── services/                        # ══ Business Logic Layer (18 services) ══
-│   │   │   ├── llm_router.py                # 🧠 Smart LLM Router (20,630 B)
-│   │   │   ├── chat_service.py              # Chat session management (13,466 B)
-│   │   │   ├── voice_service.py             # Voice pipeline: TTS + STT (9,342 B)
-│   │   │   ├── indic_voice_service.py       # Indian language specialization (3,767 B)
-│   │   │   ├── rag_service.py               # RAG: embed, store, retrieve (16,902 B)
-│   │   │   ├── sandbox_service.py           # Local subprocess sandbox lifecycle (11,262 B)
-│   │   │   ├── image_service.py             # Image generation orchestration (4,478 B)
-│   │   │   ├── email_service.py             # Transactional email & OTP (20,665 B)
-│   │   │   ├── agent_service.py             # Agent task coordination (3,447 B)
-│   │   │   ├── ai_orchestrator.py           # High-level AI orchestration (2,358 B)
-│   │   │   ├── ai_firewall.py               # Prompt safety & injection prevention (2,274 B)
-│   │   │   ├── memory_service.py            # Conversation memory management (2,966 B)
-│   │   │   ├── privacy_service.py           # PII detection & scrubbing (1,461 B)
-│   │   │   ├── data_retention.py            # Data lifecycle & cleanup (2,237 B)
-│   │   │   ├── self_healing.py              # Self-healing infrastructure (2,086 B)
-│   │   │   ├── subscription_service.py      # Plan management & billing (11,576 B)
-│   │   │   ├── seed_admin.py                # Default admin user seeding (3,777 B)
-│   │   │   ├── seed_plans.py                # Default plan seeding (5,400 B)
+│   │   │   ├── llm_router.py                # 🧠 Smart LLM Router
+│   │   │   ├── chat_service.py              # Chat session management
+│   │   │   ├── voice_service.py             # Voice pipeline: TTS + STT
+│   │   │   ├── indic_voice_service.py       # Indian language specialization
+│   │   │   ├── rag_service.py               # RAG: embed, store, retrieve
+│   │   │   ├── sandbox_service.py           # Local subprocess sandbox lifecycle
+│   │   │   ├── image_service.py             # Image generation orchestration
+│   │   │   ├── email_service.py             # Transactional email & OTP
+│   │   │   ├── agent_service.py             # Agent task coordination
+│   │   │   ├── ai_orchestrator.py           # High-level AI orchestration
+│   │   │   ├── ai_firewall.py               # Prompt safety & injection prevention
+│   │   │   ├── memory_service.py            # Conversation memory management
+│   │   │   ├── privacy_service.py           # PII detection & scrubbing
+│   │   │   ├── data_retention.py            # Data lifecycle & cleanup
+│   │   │   ├── self_healing.py              # Self-healing infrastructure
+│   │   │   ├── subscription_service.py      # Plan management & billing
+│   │   │   ├── seed_admin.py                # Default admin user seeding
+│   │   │   ├── seed_plans.py                # Default plan seeding
 │   │   │
 │   │   ├── core/                            # ══ Security & Configuration Layer ══
-│   │   │   ├── config.py                    # Pydantic Settings — all env vars (5,061 B)
-│   │   │   ├── security.py                  # JWT signing, token validation (6,933 B)
-│   │   │   ├── auth.py                      # Authentication utilities (3,342 B)
-│   │   │   ├── rbac.py                      # Role-Based Access Control (2,761 B)
-│   │   │   ├── encryption.py                # Field-level encryption (2,528 B)
-│   │   │   ├── redis_client.py              # Async Redis connection (4,882 B)
-│   │   │   ├── deps.py                      # FastAPI dependency injection (1,286 B)
-│   │   │   ├── compat.py                    # Cross-database compatibility (6,337 B)
-│   │   │   └── json_utils.py                # JSON serialization utils (2,070 B)
+│   │   │   ├── config.py                    # Pydantic Settings — all env vars
+│   │   │   ├── security.py                  # JWT signing, token validation
+│   │   │   ├── auth.py                      # Authentication utilities
+│   │   │   ├── rbac.py                      # Role-Based Access Control
+│   │   │   ├── encryption.py                # Field-level encryption
+│   │   │   ├── redis_client.py              # Async Redis connection
+│   │   │   ├── deps.py                      # FastAPI dependency injection
+│   │   │   ├── compat.py                    # Cross-database compatibility
+│   │   │   └── json_utils.py                # JSON serialization utils
 │   │   │
 │   │   ├── middleware/                      # ══ Request Processing Pipeline ══
-│   │   │   ├── audit_logging.py             # Tamper-proof action logging (2,562 B)
-│   │   │   ├── csrf.py                      # CSRF protection (2,950 B)
-│   │   │   ├── firewall.py                  # Application-level firewall (3,972 B)
-│   │   │   ├── input_sanitizer.py           # XSS prevention & cleaning (5,504 B)
-│   │   │   ├── tenant.py                    # Multi-tenancy isolation (1,296 B)
-│   │   │   └── usage_tracker.py             # Per-request usage metering (5,765 B)
+│   │   │   ├── audit_logging.py             # Tamper-proof action logging
+│   │   │   ├── csrf.py                      # CSRF protection
+│   │   │   ├── firewall.py                  # Application-level firewall
+│   │   │   ├── input_sanitizer.py           # XSS prevention & cleaning
+│   │   │   ├── tenant.py                    # Multi-tenancy isolation
+│   │   │   └── usage_tracker.py             # Per-request usage metering
 │   │   │
 │   │   ├── models/                          # ══ SQLAlchemy ORM Layer (24 models) ══
-│   │   │   ├── __init__.py                  # Model registry (1,913 B)
-│   │   │   ├── user.py                      # User, profile, preferences (2,516 B)
-│   │   │   ├── chat.py                      # Chat sessions, messages (2,495 B)
-│   │   │   ├── admin.py                     # Admin entities (5,608 B)
-│   │   │   ├── subscription.py              # Plans, tiers, limits (3,896 B)
-│   │   │   ├── security.py                  # Security events, keys (2,210 B)
-│   │   │   ├── organization.py              # Multi-tenant orgs (876 B)
-│   │   │   ├── workspace.py                 # Workspace model (634 B)
-│   │   │   ├── incidents.py                 # Incident management (1,806 B)
-│   │   │   ├── observability.py             # Metrics, telemetry (1,366 B)
-│   │   │   ├── plugins.py                   # Plugin system (1,390 B)
-│   │   │   ├── otp.py                       # OTP records (668 B)
-│   │   │   ├── memory.py                    # Conversation memory (658 B)
-│   │   │   ├── file.py                      # File uploads (644 B)
-│   │   │   ├── snippets.py                  # Code snippets (928 B)
-│   │   │   ├── ai_model.py                  # AI model registry (658 B)
-│   │   │   ├── rag_analytics.py             # RAG metrics (1,240 B)
-│   │   │   ├── data_governance.py           # Data governance (869 B)
-│   │   │   ├── business_intelligence.py     # BI entities (836 B)
-│   │   │   ├── system.py                    # System config (817 B)
-│   │   │   ├── types.py                     # Custom column types (1,036 B)
-│   │   │   ├── utils.py                     # Model utilities (2,069 B)
-│   │   │   ├── kokoro_setup.py              # Kokoro TTS setup (1,166 B)
-│   │   │   └── vits_setup.py                # VITS TTS setup (2,250 B)
+│   │   │   ├── __init__.py                  # Model registry
+│   │   │   ├── user.py                      # User, profile, preferences
+│   │   │   ├── chat.py                      # Chat sessions, messages
+│   │   │   ├── admin.py                     # Admin entities
+│   │   │   ├── subscription.py              # Plans, tiers, limits
+│   │   │   ├── security.py                  # Security events, keys
+│   │   │   ├── organization.py              # Multi-tenant orgs
+│   │   │   ├── workspace.py                 # Workspace model
+│   │   │   ├── incidents.py                 # Incident management
+│   │   │   ├── observability.py             # Metrics, telemetry
+│   │   │   ├── plugins.py                   # Plugin system
+│   │   │   ├── otp.py                       # OTP records
+│   │   │   ├── memory.py                    # Conversation memory
+│   │   │   ├── file.py                      # File uploads
+│   │   │   ├── snippets.py                  # Code snippets
+│   │   │   ├── ai_model.py                  # AI model registry
+│   │   │   ├── rag_analytics.py             # RAG metrics
+│   │   │   ├── data_governance.py           # Data governance
+│   │   │   ├── business_intelligence.py     # BI entities
+│   │   │   ├── system.py                    # System config
+│   │   │   ├── types.py                     # Custom column types
+│   │   │   ├── utils.py                     # Model utilities
+│   │   │   ├── kokoro_setup.py              # Kokoro TTS setup
+│   │   │   └── vits_setup.py                # VITS TTS setup
 │   │   │
 │   │   ├── schemas/                         # ══ Pydantic v2 Validation Schemas ══
 │   │   │   ├── auth.py, chat.py, user.py, voice.py, code.py
 │   │   │   └── admin_governance.py, admin_security.py
 │   │   │
 │   │   ├── database/                        # ══ Database Connection Layer ══
-│   │   │   └── db.py                        # Async engine, session factory, init_db (6,395 B)
+│   │   │   └── db.py                        # Async engine, session factory, init_db
 │   │   │
 │   │   └── static/                          # Backend static assets
 │   │
-│   ├── requirements.txt                     # Python dependencies (83 packages)
+│   ├── requirements.txt                     # Python dependencies (74 packages)
 │   ├── alembic.ini                          # Migration configuration
 │   └── .env.example                         # Environment variable template
 │
 ├── ⚛️  frontend/                             ══ Primary User Interface ══
 │   │
 │   ├── src/
-│   │   ├── App.tsx                          # Root application with routing (20,471 B)
+│   │   ├── App.tsx                          # Root application with routing
 │   │   ├── main.tsx                         # React DOM render entrypoint
 │   │   │
-│   │   ├── components/                      # ── 12 Reusable UI Components ──
-│   │   │   ├── ChatInput.tsx                # Message input with voice, attachments (18,141 B)
-│   │   │   ├── ChatMessage.tsx              # Message bubble with markdown (11,177 B)
-│   │   │   ├── Sidebar.tsx                  # Navigation sidebar (21,986 B)
-│   │   │   ├── SettingsModal.tsx            # Comprehensive settings panel (70,957 B)
-│   │   │   ├── CommandPalette.tsx           # ⌘K quick-action launcher (6,465 B)
-│   │   │   ├── AgentTaskPlan.tsx            # Multi-agent visualization (15,292 B)
-│   │   │   ├── TokenUsageBadge.tsx          # Token consumption display (7,987 B)
-│   │   │   ├── SubscriptionGate.tsx         # Plan enforcement modal (10,588 B)
-│   │   │   ├── ErrorBoundary.tsx            # Error boundary wrapper (3,405 B)
+│   │   ├── components/                      # ── 26 Reusable UI Components ──
+│   │   │   ├── ChatInput.tsx                # Message input with voice, attachments
+│   │   │   ├── ChatMessage.tsx              # Message bubble with markdown
+│   │   │   ├── Sidebar.tsx                  # Navigation sidebar
+│   │   │   ├── SettingsModal.tsx            # Comprehensive settings panel
+│   │   │   ├── CommandPalette.tsx           # ⌘K quick-action launcher
+│   │   │   ├── AgentTaskPlan.tsx            # Multi-agent visualization
+│   │   │   ├── TokenUsageBadge.tsx          # Token consumption display
+│   │   │   ├── SubscriptionGate.tsx         # Plan enforcement modal
+│   │   │   ├── ErrorBoundary.tsx            # Error boundary wrapper
 │   │   │   ├── Logo.tsx, ProfileAvatar.tsx, ScrollProvider.tsx
 │   │   │   ├── settings/                    # Settings sub-components (5 files)
 │   │   │   ├── sidebar/                     # Sidebar sub-components (2 files)
@@ -903,38 +903,38 @@ AI-Chatbot-InfiChat/
 │   │   │                                    # ConfirmDialog, Skeleton, TypingIndicator
 │   │   │
 │   │   ├── pages/                           # ── 8 Top-Level Route Views ──
-│   │   │   ├── Chat.tsx                     # Main chat interface (18,427 B)
-│   │   │   ├── ImageGen.tsx                 # AI image generation (8,982 B)
-│   │   │   ├── RAG.tsx                      # Knowledge base management (9,202 B)
-│   │   │   ├── Snippets.tsx                 # Code snippet manager (13,651 B)
-│   │   │   ├── Login.tsx                    # Authentication page (13,641 B)
-│   │   │   ├── Register.tsx                 # Registration page (11,938 B)
-│   │   │   ├── SharedChatView.tsx           # Public shared chat viewer (5,819 B)
-│   │   │   └── Admin.tsx                    # Admin redirect (2,732 B)
+│   │   │   ├── Chat.tsx                     # Main chat interface
+│   │   │   ├── ImageGen.tsx                 # AI image generation
+│   │   │   ├── RAG.tsx                      # Knowledge base management
+│   │   │   ├── Snippets.tsx                 # Code snippet manager
+│   │   │   ├── Login.tsx                    # Authentication page
+│   │   │   ├── Register.tsx                 # Registration page
+│   │   │   ├── SharedChatView.tsx           # Public shared chat viewer
+│   │   │   └── Admin.tsx                    # Admin redirect
 │   │   │
 │   │   ├── hooks/                           # ── 5 Custom React Hooks ──
-│   │   │   ├── useAuth.tsx                  # Authentication state & guards (6,463 B)
-│   │   │   ├── useChatStream.ts             # SSE streaming chat (4,739 B)
-│   │   │   ├── useResearchStream.ts         # Deep research streaming (5,550 B)
-│   │   │   ├── useThinkingStream.ts         # Deep thinking streaming (5,264 B)
-│   │   │   └── useAccentColor.ts            # Theme accent color (2,723 B)
+│   │   │   ├── useAuth.tsx                  # Authentication state & guards
+│   │   │   ├── useChatStream.ts             # SSE streaming chat
+│   │   │   ├── useResearchStream.ts         # Deep research streaming
+│   │   │   ├── useThinkingStream.ts         # Deep thinking streaming
+│   │   │   └── useAccentColor.ts            # Theme accent color
 │   │   │
 │   │   ├── context/ThemeContext.tsx          # Dark/light theme provider
 │   │   ├── lib/utils.ts                     # Helper functions
 │   │   ├── styles/design-tokens.css         # CSS custom properties
-│   │   ├── index.css                        # Global styles (8,997 B)
+│   │   ├── index.css                        # Global styles
 │   │   └── theme-transitions.css            # Theme switch animations
 │   │
 │   ├── electron/                            # ── Electron Desktop Shell ──
-│   │   ├── main.js                          # Main process: window management, IPC (4,339 B)
-│   │   └── preload.js                       # Preload: secure context bridge (743 B)
+│   │   ├── main.js                          # Main process: window management, IPC
+│   │   └── preload.js                       # Preload: secure context bridge
 │   │
 │   ├── public/                              # Static assets (logos, Monaco Editor)
 │   ├── build/                               # Electron build resources (icons)
-│   ├── index.html                           # HTML entrypoint (3,119 B)
+│   ├── index.html                           # HTML entrypoint
 │   ├── package.json                         # Dependencies (44 production + 12 dev packages)
 │   ├── vite.config.ts                       # Vite build configuration
-│   ├── tailwind.config.js                   # Tailwind CSS customization (6,246 B)
+│   ├── tailwind.config.js                   # Tailwind CSS customization
 │   ├── postcss.config.js                    # PostCSS configuration
 │   ├── tsconfig.json                        # TypeScript configuration
 │   └── build_win.ps1                        # Windows Electron build script
@@ -942,7 +942,7 @@ AI-Chatbot-InfiChat/
 ├── 🛡️  admin-frontend/                       ══ Enterprise Command Center ══
 │   │
 │   ├── src/
-│   │   ├── App.tsx                          # Admin app root with routing (4,967 B)
+│   │   ├── App.tsx                          # Admin app root with routing
 │   │   ├── main.tsx                         # React DOM render entrypoint
 │   │   │
 │   │   ├── components/
@@ -970,7 +970,7 @@ AI-Chatbot-InfiChat/
 │   │   │
 │   │   ├── hooks/useAuth.tsx, useHasPermission.ts
 │   │   ├── lib/utils.ts
-│   │   ├── index.css (10,435 B)
+│   │   ├── index.css
 │   │   └── theme-transitions.css
 │   │
 │   ├── package.json                         # Dependencies (29 production + 6 dev packages)
@@ -979,20 +979,20 @@ AI-Chatbot-InfiChat/
 │
 ├── 🔊  TTS and STT/                          ══ Voice AI Agent (Standalone) ══
 │   │
-│   ├── main.py                              # CLI / API mode launcher (703 B)
-│   ├── voice_config.json                    # Voice persona configuration (1,342 B)
-│   ├── pyproject.toml                       # Python project metadata (598 B)
+│   ├── main.py                              # CLI / API mode launcher
+│   ├── voice_config.json                    # Voice persona configuration
+│   ├── pyproject.toml                       # Python project metadata
 │   ├── app/
 │   │   ├── __init__.py
-│   │   ├── agent.py                         # Voice AI agent orchestrator (1,632 B)
-│   │   ├── response_engine.py               # LLM response generation (4,486 B)
-│   │   ├── tts_engine.py                    # Text-to-Speech synthesis (1,902 B)
-│   │   ├── stt_engine.py                    # Speech-to-Text recognition (2,578 B)
-│   │   ├── tts_formatter.py                 # Indian number/abbreviation normalization (4,651 B)
-│   │   ├── http_api.py                      # FastAPI HTTP server (3,585 B)
-│   │   ├── cli.py                           # Interactive CLI interface (1,593 B)
-│   │   ├── config.py                        # Voice module configuration (1,312 B)
-│   │   └── models.py                        # Voice data models (1,698 B)
+│   │   ├── agent.py                         # Voice AI agent orchestrator
+│   │   ├── response_engine.py               # LLM response generation
+│   │   ├── tts_engine.py                    # Text-to-Speech synthesis
+│   │   ├── stt_engine.py                    # Speech-to-Text recognition
+│   │   ├── tts_formatter.py                 # Indian number/abbreviation normalization
+│   │   ├── http_api.py                      # FastAPI HTTP server
+│   │   ├── cli.py                           # Interactive CLI interface
+│   │   ├── config.py                        # Voice module configuration
+│   │   └── models.py                        # Voice data models
 │   └── tests/
 │       ├── test_agent.py
 │       ├── test_response_engine.py
@@ -1020,23 +1020,23 @@ The full interactive **Swagger UI** is available at **`http://localhost:8080/doc
 
 | Group | Base Path | Routes | Description |
 |:---|:---|:---:|:---|
-| **Authentication** | `/api/auth/` | 6 | Register, login, logout, OTP, password reset, refresh |
+| **Authentication** | `/api/auth/` | 13 | Register, login, logout, OTP, password reset, refresh |
 | **OAuth** | `/api/oauth/` | 2 | Google OAuth 2.0 authorization & callback |
-| **Chat** | `/api/chat/` | 4 | LLM streaming, history, shared links |
+| **Chat** | `/api/chat/` | 15 | LLM streaming, history, shared links |
 | **Voice** | `/api/voice/` | 2 | TTS synthesis, STT transcription |
 | **RAG** | `/api/rag/` | 4 | Document upload, knowledge base, query, delete |
-| **Code Agent** | `/api/code/` | 1 | Sandboxed Python execution |
+| **Code Agent** | `/api/code/` | 4 | Sandboxed Python execution |
 | **Research** | `/api/research/` | 1 | Deep research with web + academic search |
 | **Thinking** | `/api/thinking/` | 1 | Extended chain-of-thought reasoning |
 | **Image** | `/api/image/` | 1 | AI image generation |
-| **Snippets** | `/api/snippets/` | 4 | Code snippet CRUD |
-| **Settings** | `/api/settings/` | 3 | User preferences and profile |
-| **Admin** | `/api/admin/` | 8+ | User management, governance, security |
-| **Subscriptions** | `/api/subscriptions/` | 5 | Plan management and billing |
+| **Snippets** | `/api/snippets/` | 3 | Code snippet CRUD |
+| **Settings** | `/api/settings/` | 2 | User preferences and profile |
+| **Admin** | `/api/admin/` | 35+ | User management, governance, security |
+| **Subscriptions** | `/api/subscriptions/` | 10 | Plan management and billing |
 | **Organizations** | `/api/organizations/` | 3 | Multi-tenant org management |
-| **System** | `/api/system/` | 4 | Health checks, diagnostics, system info |
+| **System** | `/api/system/` | 7 | Health checks, diagnostics, system info |
 | **Metrics** | `/api/metrics` | 1 | Prometheus metrics export |
-| **WebSocket** | `/ws/` | 3 | Agent, broadcast, and code execution streams |
+| **WebSocket** | `/ws/` | 9 | Agent, broadcast, and code execution streams |
 
 ### Key Endpoints
 

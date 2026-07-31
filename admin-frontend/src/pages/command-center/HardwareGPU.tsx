@@ -8,7 +8,7 @@ import { useAuth } from '../../hooks/useAuth';
 const API = import.meta.env.VITE_API_URL || "http://localhost:8080";
 
 const GPU_MODELS = [
-    { name: 'Llama 3.1 8B', model_id: 'llama-3.1-8b-instant', gpuLayers: 32, cpuThreads: 4, status: 'active' },
+
     { name: 'Llama 3.3 70B', model_id: 'llama-3.3-70b-versatile', gpuLayers: 64, cpuThreads: 8, status: 'active' },
     { name: 'Mixtral 8x7B', model_id: 'mixtral-8x7b-32768', gpuLayers: 48, cpuThreads: 6, status: 'standby' },
     { name: 'Whisper V3', model_id: 'whisper-large-v3', gpuLayers: 16, cpuThreads: 2, status: 'active' },

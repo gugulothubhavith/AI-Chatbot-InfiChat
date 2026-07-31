@@ -8,8 +8,9 @@ import { cn } from "../lib/utils";
 import { TokenUsageBadge } from "./TokenUsageBadge";
 
 const MODELS = [
-  { id: "nvidia/nemotron-3-super-120b-a12b", name: "Nemotron 3 Super (120B)", description: "Advanced reasoning with thinking capability" },
-  { id: "gemini-3-flash-preview", name: "Gemini 3 (Flash) - Google", description: "Latest Vision-capable model" },
+  { id: "nvidia/nemotron-3-ultra-550b-a55b", name: "Nemotron 3 Ultra (550B)", description: "Advanced reasoning with thinking capability" },
+  { id: "meta/llama-3.1-70b-instruct", name: "Llama 3.1 (70B) Instruct", description: "Advanced conversational model" },
+  { id: "openai/gpt-oss-120b", name: "GPT OSS (120B)", description: "High-speed reasoning and coding" },
 ];
 
 interface ChatInputProps {

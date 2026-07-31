@@ -8,7 +8,7 @@ import { useAuth } from '../../hooks/useAuth';
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
 
 const availableModels = [
-    { id: "llama-3.1-8b-instant", name: "Llama 3.1 8B (Fast)", provider: "Groq", type: "LLM" },
+
     { id: "llama-3.3-70b-versatile", name: "Llama 3.3 70B (Smart)", provider: "Groq", type: "LLM" },
     { id: "mixtral-8x7b-32768", name: "Mixtral 8x7B", provider: "Groq", type: "LLM" },
     { id: "gemma2-9b-it", name: "Gemma 2 9B", provider: "Groq", type: "LLM" },
@@ -21,7 +21,7 @@ export default function ModelHub() {
     const [saving, setSaving] = useState(false);
     
     // Model Settings State
-    const [activeModel, setActiveModel] = useState("llama-3.1-8b-instant");
+    const [activeModel, setActiveModel] = useState("llama-3.3-70b-versatile");
     const [temperature, setTemperature] = useState(0.7);
     const [maxTokens, setMaxTokens] = useState(2048);
     const [customInstructions, setCustomInstructions] = useState("");

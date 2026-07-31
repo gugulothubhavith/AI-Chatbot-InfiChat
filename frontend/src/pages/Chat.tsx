@@ -58,7 +58,7 @@ export default function Chat() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<{ name: string; type: string } | null>(null);
   const [loading, setLoading] = useState(false);
-  const [selectedModel, setSelectedModel] = useState("nvidia/nemotron-3-super-120b-a12b");
+  const [selectedModel, setSelectedModel] = useState("nvidia/nemotron-3-ultra-550b-a55b");
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [showToolsMenu, setShowToolsMenu] = useState(false);
   const [isDeepResearch, setIsDeepResearch] = useState(false);
@@ -141,7 +141,7 @@ export default function Chat() {
     const textToSend = customConfig?.overrideText || input;
     if ((!textToSend.trim() && !selectedImage) || loading) return;
 
-    const activeModel = customConfig?.overrideModel || selectedModel || "llama-3.1-8b-instant";
+    const activeModel = customConfig?.overrideModel || selectedModel || "nvidia/nemotron-3-ultra-550b-a55b";
     const userMessage: Message = { role: "user", content: textToSend, timestamp: new Date(), image: selectedImage || undefined, file_name: selectedFile?.name, file_type: selectedFile?.type };
     setMessages(prev => [...prev, userMessage]);
     setInput(""); setSelectedImage(null); setSelectedFile(null);

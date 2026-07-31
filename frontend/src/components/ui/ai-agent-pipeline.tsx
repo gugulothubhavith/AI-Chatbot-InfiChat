@@ -22,7 +22,7 @@ const VARIANT_CONFIGS: Record<PipelineVariant, PipelineConfig> = {
     nodes: [
       { label: "User Query", sublabel: "TRIGGER", id: "node-01" },
       { label: "Web Crawl", sublabel: "SEARCH", id: "serper-api" },
-      { label: "Synthesizer", sublabel: "LLM AGENT", id: "gemini-3" },
+      { label: "Synthesizer", sublabel: "LLM AGENT", id: "nemotron" },
     ],
     outputs: [
       { label: "Source Index", status: "done" },
@@ -47,7 +47,7 @@ const VARIANT_CONFIGS: Record<PipelineVariant, PipelineConfig> = {
       { label: "AGENTS", value: "12" },
       { label: "LATENCY", value: "4.2s" },
     ],
-    stack: "Gemini · Serper · RAG",
+    stack: "Nemotron · Serper · RAG",
   },
   thinking: {
     title: "DEEP THINKING PIPELINE",
@@ -361,7 +361,7 @@ export default function AIAgentPipeline({
           </text>
 
           {/* ── Node 2: Execution Engine (dynamic agents inside) ── */}
-          <rect x="180" y="42" width="240" height="116" rx="12" fill="var(--color-bg)" stroke="var(--color-accent)" strokeWidth="1" opacity={0.9} />
+          <rect x="180" y="42" width="240" height="146" rx="12" fill="var(--color-bg)" stroke="var(--color-accent)" strokeWidth="1" opacity={0.9} />
           {/* Accent top bar */}
           <rect x="194" y="42.5" width="60" height="1" rx="0.5" fill="var(--color-accent)" opacity={0.5} />
           {/* Engine label */}
@@ -375,8 +375,8 @@ export default function AIAgentPipeline({
           />
 
           {/* Dynamic node chips via foreignObject */}
-          <foreignObject x="186" y="62" width="228" height="90">
-            <div className="flex flex-wrap gap-[5px] justify-center p-1 overflow-hidden" style={{ maxHeight: 88 }}>
+          <foreignObject x="186" y="62" width="228" height="120">
+            <div className="flex flex-wrap gap-[5px] justify-center p-1 overflow-y-auto" style={{ maxHeight: 118 }}>
               {nodesToRender.map((node) => (
                 <div 
                   key={node.id} 
