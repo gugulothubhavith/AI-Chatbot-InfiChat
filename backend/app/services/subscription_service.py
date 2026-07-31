@@ -182,6 +182,28 @@ FEATURE_PATH_MAP = {
     "/web_search/": "web_search",
 }
 
+# The canonical set of feature flags a plan's ``features`` dict is keyed by.
+#
+# This is the authority, and it is derived rather than hand-written: every value
+# in FEATURE_PATH_MAP is a name that check_feature_access() will look up, and
+# that function denies by default (``features.get(name, False)``). A plan whose
+# features dict is missing one of these names therefore *blocks* that feature,
+# silently, for every user on the plan — which is exactly how the seeded plans
+# came to spell these "image_generation" and "code_agent" while the gate looked
+# up "image_gen" and "code_executions". Import this instead of retyping the
+# names; see validate_plan_features() below.
+GATED_FEATURES = frozenset(FEATURE_PATH_MAP.values())
+
+
+def validate_plan_features(features: dict, *, plan_name: str = "plan") -> list[str]:
+    """Return the canonical feature names missing from ``features``.
+
+    Empty list means the dict can be gated correctly. Callers that seed or
+    repair plans use this to fail loudly instead of shipping a plan that returns
+    HTTP 402 for a feature the customer is paying for.
+    """
+    return sorted(name for name in GATED_FEATURES if name not in (features or {}))
+
 # Daily features vs monthly features
 DAILY_FEATURES = {"chat_messages", "chat_tokens", "web_search"}
 MONTHLY_FEATURES = {"deep_research", "deep_thinking", "image_gen", "code_executions"}

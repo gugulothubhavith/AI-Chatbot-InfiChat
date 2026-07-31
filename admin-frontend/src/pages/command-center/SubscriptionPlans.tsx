@@ -48,11 +48,17 @@ const DEFAULT_LIMITS: Record<string, number> = {
     max_context_length: 4096,
 };
 
+// Keys must match the backend's canonical feature names (see
+// subscription_service.FEATURE_PATH_MAP / GATED_FEATURES). The entitlement gate
+// denies any name it does not recognise, so a plan saved with a key like
+// "image_generation" or "code_agent" returns HTTP 402 for that feature even
+// though the toggle reads as enabled here.
 const DEFAULT_FEATURES: Record<string, boolean> = {
+    chat_messages: true,
     deep_research: false,
     deep_thinking: false,
-    image_generation: false,
-    code_agent: false,
+    image_gen: false,
+    code_executions: false,
     rag: true,
     voice: true,
     web_search: false,

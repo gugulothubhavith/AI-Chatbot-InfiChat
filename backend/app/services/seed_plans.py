@@ -3,8 +3,19 @@
 import logging
 from app.database.db import SessionLocal
 from app.models.subscription import SubscriptionPlan
+from app.services.subscription_service import GATED_FEATURES, validate_plan_features
 
 logger = logging.getLogger(__name__)
+
+# Feature flags that were once seeded under a different name than the one the
+# entitlement gate looks up. check_feature_access() denies unknown names, so a
+# plan carrying only the legacy spelling blocks the feature it means to grant.
+# Mapping is legacy -> canonical; the stored boolean is carried across unchanged
+# so a Free plan's "no image generation" stays "no".
+LEGACY_FEATURE_KEYS = {
+    "image_generation": "image_gen",
+    "code_agent": "code_executions",
+}
 
 DEFAULT_PLANS = [
     {
@@ -16,10 +27,11 @@ DEFAULT_PLANS = [
         "is_admin_plan": False,
         "is_public": True,
         "features": {
+            "chat_messages": True,
             "deep_research": False,
             "deep_thinking": False,
-            "image_generation": False,
-            "code_agent": False,
+            "image_gen": False,
+            "code_executions": False,
             "rag": True,
             "voice": True,
             "web_search": False,
@@ -46,10 +58,11 @@ DEFAULT_PLANS = [
         "is_admin_plan": False,
         "is_public": True,
         "features": {
+            "chat_messages": True,
             "deep_research": True,
             "deep_thinking": True,
-            "image_generation": True,
-            "code_agent": True,
+            "image_gen": True,
+            "code_executions": True,
             "rag": True,
             "voice": True,
             "web_search": True,
@@ -76,10 +89,11 @@ DEFAULT_PLANS = [
         "is_admin_plan": False,
         "is_public": True,
         "features": {
+            "chat_messages": True,
             "deep_research": True,
             "deep_thinking": True,
-            "image_generation": True,
-            "code_agent": True,
+            "image_gen": True,
+            "code_executions": True,
             "rag": True,
             "voice": True,
             "web_search": True,
@@ -106,10 +120,11 @@ DEFAULT_PLANS = [
         "is_admin_plan": False,
         "is_public": True,
         "features": {
+            "chat_messages": True,
             "deep_research": True,
             "deep_thinking": True,
-            "image_generation": True,
-            "code_agent": True,
+            "image_gen": True,
+            "code_executions": True,
             "rag": True,
             "voice": True,
             "web_search": True,
@@ -136,10 +151,11 @@ DEFAULT_PLANS = [
         "is_admin_plan": True,
         "is_public": False,
         "features": {
+            "chat_messages": True,
             "deep_research": True,
             "deep_thinking": True,
-            "image_generation": True,
-            "code_agent": True,
+            "image_gen": True,
+            "code_executions": True,
             "rag": True,
             "voice": True,
             "web_search": True,
@@ -159,14 +175,87 @@ DEFAULT_PLANS = [
     },
 ]
 
+# Every plan above must be gateable before it is ever written to a database.
+# A typo here is not a cosmetic bug: it makes the affected feature return HTTP
+# 402 for every paying customer on that plan, so it should stop the process at
+# import time rather than surface as a support ticket.
+for _plan in DEFAULT_PLANS:
+    _missing = validate_plan_features(_plan["features"], plan_name=_plan["name"])
+    if _missing:
+        raise RuntimeError(
+            f"DEFAULT_PLANS['{_plan['name']}'].features is missing gated feature(s) "
+            f"{_missing}. check_feature_access() denies unknown names, so these "
+            f"would be blocked for every user on the plan. Canonical names: "
+            f"{sorted(GATED_FEATURES)}"
+        )
+del _plan, _missing
+
+
+def _repair_feature_keys(db) -> None:
+    """Rename drifted feature flags on plans that already exist in the database.
+
+    seed_plans() returns early once any plan row is present, so fixing the
+    constants above only ever helped brand-new installs. Every existing
+    deployment kept the legacy spellings and kept 402-ing on chat, image
+    generation and code execution.
+
+    The repair is deliberately narrow rather than a wholesale overwrite from
+    DEFAULT_PLANS: an operator may have tuned a plan through the admin UI, and
+    clobbering that would be a second bug. Only two things happen — a legacy key
+    is renamed to its canonical name carrying its boolean across, and a missing
+    canonical name is added as True. Missing defaults to True because the plan's
+    ``limits`` entry is the real control (Free allows 20 chat messages/day); a
+    plan that should deny a feature outright sets its limit to 0, which
+    check_usage_limit() already enforces.
+    """
+    repaired = 0
+    try:
+        for plan in db.query(SubscriptionPlan).all():
+            # JSONB is not wrapped in MutableDict, so SQLAlchemy does not see
+            # in-place edits. Build a new dict and reassign to mark it dirty.
+            original = plan.features or {}
+            features = dict(original)
+
+            for legacy, canonical in LEGACY_FEATURE_KEYS.items():
+                if legacy in features:
+                    # An explicit canonical value always wins over the legacy one.
+                    features.setdefault(canonical, features[legacy])
+                    del features[legacy]
+
+            for name in GATED_FEATURES:
+                features.setdefault(name, True)
+
+            if features != original:
+                plan.features = features
+                repaired += 1
+                logger.info(
+                    "Repaired feature flags on plan '%s': %s -> %s",
+                    plan.name, sorted(original), sorted(features),
+                )
+
+        if repaired:
+            db.commit()
+            msg = f"Repaired feature flags on {repaired} subscription plan(s)"
+            logger.info(msg)
+            print(f"[seed] {msg}")
+    except Exception as e:
+        db.rollback()
+        # Never let a repair failure take down startup — the plans are merely
+        # left as they were, which is the pre-existing behaviour.
+        logger.error(f"Failed to repair plan feature keys: {e}")
+        print(f"[seed] feature-key repair FAILED: {e}")
+
 
 def seed_plans():
-    """Insert default plans if they don't already exist."""
+    """Insert default plans if they don't already exist, then repair drifted ones."""
     db = SessionLocal()
     try:
         existing = db.query(SubscriptionPlan).count()
         if existing > 0:
-            logger.info(f"Plans already seeded ({existing} plans found), skipping")
+            logger.info(f"Plans already seeded ({existing} plans found), skipping insert")
+            # Existing installs still need the feature-key repair below — an
+            # early return here is what let the drift survive every restart.
+            _repair_feature_keys(db)
             return
 
         for plan_data in DEFAULT_PLANS:

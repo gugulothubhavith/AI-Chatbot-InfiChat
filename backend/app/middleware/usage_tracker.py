@@ -49,6 +49,19 @@ SKIP_PATHS = {
 # Path prefixes to track
 TRACK_PREFIXES = ("/api/v1/", "/chat/", "/research/", "/thinking/", "/code/", "/image/", "/rag/", "/voice/", "/web_search/")
 
+# Methods that never consume quota. Feature resolution is a substring match on
+# the path, so ``GET /chat/sessions`` and ``GET /chat/{id}/messages`` resolve to
+# the ``chat_messages`` feature just like ``POST /chat/stream`` does. Metering
+# them meant simply opening the app burned generation quota, and a user who hit
+# their limit was locked out of reading their own history.
+#
+# Safe to skip because every metered generator is a POST — /chat/message,
+# /chat/stream, /research/stream, /thinking/stream, /web_search/stream,
+# /image/generate, /code/*, /rag/upload, /rag/query, /voice/*. No GET route
+# invokes a model, so this cannot be used to bypass billing. Keep it that way:
+# a new generating endpoint must be POST.
+UNMETERED_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
 _SERVICE_UNAVAILABLE = Response(
     content=json.dumps({
         "detail": "Usage metering is temporarily unavailable. Please retry shortly.",
@@ -196,6 +209,12 @@ class UsageTrackingMiddleware(BaseHTTPMiddleware):
 
         # Skip WebSocket
         if path.startswith("/ws"):
+            return await call_next(request)
+
+        # Reads neither consume quota nor require the feature flag. See
+        # UNMETERED_METHODS: this is what stops "open the app" from spending
+        # generation credits.
+        if request.method.upper() in UNMETERED_METHODS:
             return await call_next(request)
 
         # Determine feature from path before touching the DB.
