@@ -1,65 +1,96 @@
-from fastapi import Request, Response
+"""Admin audit trail — records every request to the admin API.
+
+The write is synchronous SQLAlchemy, so it runs in a worker thread. Doing it
+inline on the event loop blocked every other in-flight request (including live
+SSE streams) for the duration of two queries, and the audit record is never
+worth stalling unrelated traffic for.
+"""
+
+import asyncio
+import logging
+
+from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
-from sqlalchemy.orm import Session
+
+from app.core.auth import decode_token
 from app.database.db import SessionLocal
 from app.models.admin import AdminAuditLog, AdminProfile
-from app.core.auth import decode_token
-import json
-import datetime
+
+logger = logging.getLogger(__name__)
+
+
+def _write_audit_log(
+    user_id: str | None,
+    action: str,
+    path: str,
+    ip_address: str,
+    user_agent: str | None,
+    status_code: int,
+    query_params: dict,
+) -> None:
+    """Resolve the acting admin and persist one audit row.
+
+    Takes only plain values so it is safe to run off the event loop — nothing
+    here touches the Request or Response objects. Both queries share one
+    session; the previous version opened two.
+    """
+    db = SessionLocal()
+    try:
+        admin_id = None
+        if user_id:
+            admin = (
+                db.query(AdminProfile)
+                .filter(AdminProfile.user_id == user_id)
+                .first()
+            )
+            if admin:
+                admin_id = admin.id
+
+        db.add(
+            AdminAuditLog(
+                admin_id=admin_id,
+                action=action,
+                resource_type="API_ENDPOINT",
+                resource_id=path,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                new_state={"status_code": status_code, "query_params": query_params},
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
 
 class AdminAuditMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # Only log requests to admin endpoints
         if not request.url.path.startswith("/api/admin"):
             return await call_next(request)
 
-        # Clone request for body reading if needed (careful with large bodies)
-        # For security, we log the action, but might skip logging the entire body if it's too large
-        
         response = await call_next(request)
-        
-        # Post-response logging
-        try:
-            auth_header = request.headers.get("Authorization")
-            admin_id = None
-            if auth_header and auth_header.startswith("Bearer "):
-                token = auth_header.split(" ")[1]
-                payload = decode_token(token)
-                if payload:
-                    user_id = payload.get("sub")
-                    db = SessionLocal()
-                    try:
-                        admin = db.query(AdminProfile).filter(AdminProfile.user_id == user_id).first()
-                        if admin:
-                            admin_id = admin.id
-                    finally:
-                        db.close()
 
-            # Record the audit log
-            db = SessionLocal()
-            try:
-                # Basic info
-                action = f"{request.method} {request.url.path}"
-                log = AdminAuditLog(
-                    admin_id=admin_id,
-                    action=action,
-                    resource_type="API_ENDPOINT",
-                    resource_id=request.url.path,
-                    ip_address=request.client.host if request.client else "unknown",
-                    user_agent=request.headers.get("user-agent"),
-                    new_state={
-                        "status_code": response.status_code,
-                        "query_params": dict(request.query_params)
-                    }
-                )
-                db.add(log)
-                db.commit()
-            except Exception as e:
-                print(f"Error in AdminAuditMiddleware: {e}")
-            finally:
-                db.close()
-                
+        # Decoding the token is local and cheap; only the DB write is offloaded.
+        user_id = None
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            payload = decode_token(auth_header[7:])
+            if payload:
+                user_id = payload.get("sub")
+
+        try:
+            await asyncio.to_thread(
+                _write_audit_log,
+                user_id,
+                f"{request.method} {request.url.path}",
+                request.url.path,
+                request.client.host if request.client else "unknown",
+                request.headers.get("user-agent"),
+                response.status_code,
+                dict(request.query_params),
+            )
         except Exception as e:
-            print(f"Failed to log admin action: {e}")
-            
+            # An audit write must never fail a request that already succeeded,
+            # but it must be visible in the logs rather than printed to stdout.
+            logger.error("Failed to record admin audit log: %s", e, exc_info=True)
+
         return response

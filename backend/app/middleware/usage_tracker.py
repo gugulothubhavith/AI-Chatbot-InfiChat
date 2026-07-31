@@ -18,10 +18,10 @@ deliberate "allow" path is a fresh install with no plans seeded yet, which the
 subscription service signals explicitly (not via an exception).
 """
 
+import asyncio
 import hashlib
 import json
 import logging
-import time
 from typing import Optional
 
 from fastapi import Request, Response
@@ -68,14 +68,16 @@ def _service_unavailable() -> Response:
     )
 
 
-def _resolve_user_id(request: Request, db) -> Optional[str]:
+def _resolve_user_id(auth_header: str, db) -> Optional[str]:
     """Resolve the caller's user id from a JWT or personal access token.
+
+    Takes the raw ``Authorization`` header rather than the ``Request`` so this
+    stays a pure synchronous function that is safe to run in a worker thread.
 
     Returns None only when there is no usable credential. Raises on database
     errors so the caller can fail closed rather than mistaking an outage for an
     anonymous request.
     """
-    auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
         return None
 
@@ -104,6 +106,79 @@ def _resolve_user_id(request: Request, db) -> Optional[str]:
     return payload.get("sub")
 
 
+def _check_entitlements(auth_header: str, feature: str) -> dict:
+    """Run the whole metering gate synchronously and return a verdict.
+
+    Every database call for one request is grouped here so the caller can hand
+    the lot to a single worker thread. Previously each of these ran directly on
+    the event loop; because the loop is single-threaded, a sync round-trip here
+    froze *every* concurrent request — measurably stalling in-flight SSE streams
+    by the duration of the query. Returning a plain dict (rather than a
+    ``Response``) keeps this function free of any loop-bound object.
+
+    Opens and closes its own session so no connection is pinned for the life of
+    the downstream request, which for a stream can be minutes.
+    """
+    try:
+        from app.database.db import SessionLocal
+        db = SessionLocal()
+    except Exception as e:
+        logger.error(f"UsageTracking: DB unavailable, refusing request: {e}")
+        return {"verdict": "unavailable"}
+
+    try:
+        # Unauthenticated requests pass through so the route's own auth
+        # dependency can issue the correct 401 — the auth layer owns that
+        # decision, not metering.
+        try:
+            user_id = _resolve_user_id(auth_header, db)
+        except Exception as e:
+            logger.error(f"UsageTracking: credential lookup failed, refusing request: {e}")
+            return {"verdict": "unavailable"}
+
+        if not user_id:
+            return {"verdict": "anonymous"}
+
+        try:
+            if not check_feature_access(user_id, feature, db):
+                return {"verdict": "no_access", "user_id": user_id}
+        except Exception as e:
+            logger.error(f"UsageTracking: feature-access check failed, refusing request: {e}")
+            return {"verdict": "unavailable"}
+
+        try:
+            allowed, remaining, limit = check_usage_limit(user_id, feature, db)
+        except Exception as e:
+            logger.error(f"UsageTracking: usage-limit check failed, refusing request: {e}")
+            return {"verdict": "unavailable"}
+
+        if not allowed:
+            return {"verdict": "over_limit", "user_id": user_id, "limit": limit}
+
+        return {
+            "verdict": "allowed",
+            "user_id": user_id,
+            "remaining": remaining,
+            "limit": limit,
+        }
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass
+
+
+def _record_usage_sync(user_id: str, feature: str) -> None:
+    """Record one usage event on its own short-lived session."""
+    from app.database.db import SessionLocal
+
+    rec_db = SessionLocal()
+    try:
+        record_usage(user_id, feature, db=rec_db)
+    finally:
+        rec_db.close()
+
+
 class UsageTrackingMiddleware(BaseHTTPMiddleware):
     """Middleware that tracks API usage and enforces subscription limits."""
 
@@ -128,116 +203,76 @@ class UsageTrackingMiddleware(BaseHTTPMiddleware):
         if not feature:
             return await call_next(request)
 
-        # Open a session. If the primary DB is unavailable we cannot know the
-        # caller's entitlements, so we refuse the request (fail closed) instead
-        # of handing out free access.
-        try:
-            from app.database.db import SessionLocal
-            db = SessionLocal()
-        except Exception as e:
-            logger.error(f"UsageTracking: DB unavailable, refusing request: {e}")
+        # Run the entire metering gate in a worker thread. The checks are
+        # synchronous SQLAlchemy, and the event loop is shared by every live
+        # request — running them inline froze all concurrent traffic for the
+        # duration of the queries, including SSE streams already mid-flight.
+        # The session is opened and closed inside the thread, so no connection
+        # is pinned across the downstream request.
+        auth_header = request.headers.get("Authorization", "")
+        gate = await asyncio.to_thread(_check_entitlements, auth_header, feature)
+        verdict = gate["verdict"]
+
+        if verdict == "unavailable":
             return _service_unavailable()
 
-        try:
-            # Resolve the caller. Unauthenticated requests are passed through so
-            # the route's own auth dependency can issue the correct 401 — the
-            # firewall/auth layer owns that decision, not metering.
+        if verdict == "anonymous":
+            return await call_next(request)
+
+        if verdict == "no_access":
+            return Response(
+                content=json.dumps({
+                    "detail": (
+                        f"The '{feature}' feature is not available on your current plan. "
+                        f"Upgrade to access this feature."
+                    ),
+                    "code": "FEATURE_NOT_AVAILABLE",
+                    "feature": feature,
+                }),
+                status_code=402,
+                media_type="application/json",
+                headers={"X-Upgrade-Required": "true"},
+            )
+
+        if verdict == "over_limit":
+            limit = gate["limit"]
+            return Response(
+                content=json.dumps({
+                    "detail": (
+                        f"You've reached your daily/monthly limit for '{feature}' "
+                        f"({limit} uses). Please upgrade your plan or wait for the reset."
+                    ),
+                    "code": "LIMIT_EXCEEDED",
+                    "feature": feature,
+                    "limit": limit,
+                    "remaining": 0,
+                }),
+                status_code=429,
+                media_type="application/json",
+                headers={
+                    "X-RateLimit-Limit": str(limit),
+                    "X-RateLimit-Remaining": "0",
+                    "X-Upgrade-Required": "true",
+                },
+            )
+
+        user_id = gate["user_id"]
+        remaining = gate["remaining"]
+        limit = gate["limit"]
+
+        response = await call_next(request)
+
+        response.headers["X-Usage-Feature"] = feature
+        response.headers["X-Usage-Remaining"] = str(max(0, remaining - 1))
+        response.headers["X-Usage-Limit"] = str(limit)
+
+        # Record usage for successful responses, also off-loop. A recording
+        # failure must not fail an already-served request, so it is logged and
+        # swallowed here (and only here).
+        if 200 <= response.status_code < 400:
             try:
-                user_id = _resolve_user_id(request, db)
+                await asyncio.to_thread(_record_usage_sync, user_id, feature)
             except Exception as e:
-                logger.error(f"UsageTracking: credential lookup failed, refusing request: {e}")
-                return _service_unavailable()
+                logger.error(f"Usage recording failed: {e}")
 
-            if not user_id:
-                return await call_next(request)
-
-            # Entitlement + limit checks. A raised exception here means we
-            # genuinely don't know the caller's limits — fail closed.
-            try:
-                has_access = check_feature_access(user_id, feature, db)
-            except Exception as e:
-                logger.error(f"UsageTracking: feature-access check failed, refusing request: {e}")
-                return _service_unavailable()
-
-            if not has_access:
-                return Response(
-                    content=json.dumps({
-                        "detail": (
-                            f"The '{feature}' feature is not available on your current plan. "
-                            f"Upgrade to access this feature."
-                        ),
-                        "code": "FEATURE_NOT_AVAILABLE",
-                        "feature": feature,
-                    }),
-                    status_code=402,
-                    media_type="application/json",
-                    headers={"X-Upgrade-Required": "true"},
-                )
-
-            try:
-                allowed, remaining, limit = check_usage_limit(user_id, feature, db)
-            except Exception as e:
-                logger.error(f"UsageTracking: usage-limit check failed, refusing request: {e}")
-                return _service_unavailable()
-
-            if not allowed:
-                return Response(
-                    content=json.dumps({
-                        "detail": (
-                            f"You've reached your daily/monthly limit for '{feature}' "
-                            f"({limit} uses). Please upgrade your plan or wait for the reset."
-                        ),
-                        "code": "LIMIT_EXCEEDED",
-                        "feature": feature,
-                        "limit": limit,
-                        "remaining": 0,
-                    }),
-                    status_code=429,
-                    media_type="application/json",
-                    headers={
-                        "X-RateLimit-Limit": str(limit),
-                        "X-RateLimit-Remaining": "0",
-                        "X-Upgrade-Required": "true",
-                    },
-                )
-
-            # Process the request exactly once. Metering has already been checked
-            # and the entitlement decision made — the DB session must be returned
-            # to the pool NOW (not after call_next) so that an SSE stream or any
-            # long-running request doesn't pin a connection for the whole stream
-            # and starve parallel users.
-            db.close()
-            db = None  # prevent the outer finally from double-closing
-
-            start_time = time.time()
-            response = await call_next(request)
-            elapsed = time.time() - start_time
-
-            # Add usage headers
-            response.headers["X-Usage-Feature"] = feature
-            response.headers["X-Usage-Remaining"] = str(max(0, remaining - 1))
-            response.headers["X-Usage-Limit"] = str(limit)
-
-            # Record usage for successful responses on a brand-new session so
-            # the pool connection budget is returned to the rest of the app the
-            # moment the response starts streaming. A recording failure must
-            # not fail the already-served request, so it is logged and
-            # swallowed here (and only here).
-            if 200 <= response.status_code < 400:
-                try:
-                    from app.database.db import SessionLocal
-                    rec_db = SessionLocal()
-                    try:
-                        record_usage(user_id, feature, db=rec_db)
-                    finally:
-                        rec_db.close()
-                except Exception as e:
-                    logger.error(f"Usage recording failed: {e}")
-
-            return response
-        finally:
-            if db is not None:
-                try:
-                    db.close()
-                except Exception:
-                    pass
+        return response
