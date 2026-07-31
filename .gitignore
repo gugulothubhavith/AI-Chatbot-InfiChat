@@ -86,10 +86,15 @@ Self-Hosted Generative AI Chatbot Documentation.pdf
 #  🧪 TEST SUITES & TEST ARTIFACTS
 # ═══════════════════════════════════════════════════════════════════
 
-# Backend test suite (reveals internal API contract)
-backend/tests/
+# The backend suite and its pytest config are tracked deliberately. They were
+# previously ignored to avoid "revealing the internal API contract", but that
+# is obscurity rather than a control — the contract is already published at
+# /docs and in the client code — and the cost was real: tests could not run in
+# CI, could not be reviewed, and were one `git clean` from deletion.
+# Keep secrets out of tests (use fixtures and env vars), not tests out of git.
+
+# Ad-hoc systems script, not part of the suite.
 backend/test_deep_systems.py
-backend/pytest.ini
 
 # Test output and logs
 backend/test_out.log
