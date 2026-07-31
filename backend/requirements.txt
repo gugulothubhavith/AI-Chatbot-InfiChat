@@ -25,6 +25,8 @@ passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 google-auth>=2.0.0
 httpx==0.26.0
+geoip2>=4.8.0
+stripe>=8.0.0
 email-validator>=2.1.0
 slowapi>=0.1.9
 Pillow>=10.0.0
@@ -77,6 +79,7 @@ spacy>=3.7.0
 yake>=0.4.8
 dateparser>=1.2.0
 playwright>=1.41.0
+pandas>=2.0.0
 
 # ── INFRASTRUCTURE ────────────────────────────────────────────
 docker>=7.1.0              # Optional: for Docker sandbox

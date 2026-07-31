@@ -11,6 +11,11 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U infichat_user -d infichat_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: always
 
   # 2. Redis Cache & Queue
@@ -21,6 +26,11 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: always
 
   # 3. ChromaDB Vector Database
@@ -31,6 +41,11 @@ services:
       - "8001:8000"
     volumes:
       - chromadb_data:/chroma/chroma
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8000'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
     restart: always
 
   # 4. SearxNG AI Web Search Engine
@@ -52,11 +67,17 @@ services:
     container_name: infichat_backend
     ports:
       - "8000:8000"
+    env_file:
+      - ./backend/.env
     depends_on:
-      - postgres
-      - redis
-      - chromadb
-      - searxng
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+      searxng:
+        condition: service_started
     environment:
       - DATABASE_URL=postgresql+psycopg2://infichat_user:infichat_password@postgres:5432/infichat_db
       - REDIS_URL=redis://redis:6379/0
@@ -64,13 +85,40 @@ services:
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
       - SEARXNG_URL=http://searxng:8080
+      - UNSTRUCTURED_URL=http://unstructured-api:8000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
     restart: always
 
-  # 6. Main Frontend
+  # 8. Unstructured API (Omni-Parser) — GPU optional
+  unstructured-api:
+    image: downloads.unstructured.io/unstructured-io/unstructured-api:latest
+    container_name: infichat_unstructured
+    ports:
+      - "8002:8000"
+    environment:
+      - UNSTRUCTURED_API_KEY=local_dummy_key
+    restart: always
+
+  # 6. Main Frontend (legacy — kept as fallback)
   frontend:
     build:
       context: ./frontend
     container_name: infichat_frontend
+    ports:
+      - "5175:80"
+    depends_on:
+      - backend
+    restart: always
+
+  # 6b. Frontend-New (TanStack/React 19 — primary UI)
+  frontend-new:
+    build:
+      context: ./Frontend-New
+    container_name: infichat_frontend_new
     ports:
       - "5173:80"
     depends_on:
@@ -92,3 +140,4 @@ volumes:
   postgres_data:
   redis_data:
   chromadb_data:
+
