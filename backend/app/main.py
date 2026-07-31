@@ -13,7 +13,35 @@ from slowapi.errors import RateLimitExceeded
 from app import models 
 
 import logging
+import os
 import traceback as tb_module
+from logging.handlers import RotatingFileHandler
+
+# --- Bounded error log ---------------------------------------------------
+# Unhandled exceptions are appended to a dedicated file for post-mortem
+# debugging. This MUST be size-bounded: an unbounded open("...", "a") in the
+# exception handler (the previous behaviour) lets a crash-looping request fill
+# the disk, which is itself a denial-of-service. RotatingFileHandler caps the
+# footprint at maxBytes * (backupCount + 1) and recycles old segments.
+_ERROR_LOG_PATH = os.getenv("BACKEND_ERROR_LOG", "backend_errors.log")
+_error_file_logger = logging.getLogger("app.backend_errors")
+_error_file_logger.propagate = False  # keep these out of the console/root stream
+if not _error_file_logger.handlers:
+    try:
+        _err_handler = RotatingFileHandler(
+            _ERROR_LOG_PATH,
+            maxBytes=int(os.getenv("BACKEND_ERROR_LOG_MAX_BYTES", str(5 * 1024 * 1024))),
+            backupCount=int(os.getenv("BACKEND_ERROR_LOG_BACKUPS", "3")),
+            encoding="utf-8",
+            delay=True,  # don't open the file until the first error is written
+        )
+        _err_handler.setFormatter(logging.Formatter("%(message)s"))
+        _error_file_logger.addHandler(_err_handler)
+        _error_file_logger.setLevel(logging.ERROR)
+    except Exception:
+        # If the log file can't be opened (read-only FS, etc.) we simply skip
+        # file logging — never let logging setup crash startup.
+        _error_file_logger = None
 
 # --- Sensitive Data Masking (Logging) ---
 class RedactingFilter(logging.Filter):
@@ -292,16 +320,19 @@ async def global_exception_handler(request, exc):
     error_msg = f"GLOBAL ERROR [{error_id}]: {exc}\n{error_trace}"
     logger.error(error_msg)
     
-    # Log to file for debugging
-    try:
-        with open("backend_errors.log", "a") as f:
-            f.write(f"\n{'='*40}\n")
-            f.write(f"TIMESTAMP: {datetime.now(timezone.utc)}\n")
-            f.write(f"URL: {request.url}\n")
-            f.write(error_msg)
-            f.write(f"\n{'='*40}\n")
-    except Exception:
-        pass
+    # Log to a size-bounded rotating file for debugging (never unbounded).
+    if _error_file_logger is not None:
+        try:
+            _error_file_logger.error(
+                "%s\nTIMESTAMP: %s\nURL: %s\n%s\n%s",
+                "=" * 40,
+                datetime.now(timezone.utc),
+                request.url,
+                error_msg,
+                "=" * 40,
+            )
+        except Exception:
+            pass
 
     # SECURITY: Never expose tracebacks or internal details to clients in production
     if settings.is_production:
