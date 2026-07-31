@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from sqlalchemy.orm import Session
 from app.models.memory import Memory
 from app.services.llm_router import call_llm
@@ -48,17 +49,27 @@ async def extract_and_store_memories(user_id: int, user_message: str, assistant_
         
         if not facts:
             return
-            
-        db = SessionLocal()
-        try:
-            for fact in facts:
-                logger.info(f"🧠 Storing Memory for User {user_id}: {fact}")
-                new_mem = Memory(user_id=user_id, content=fact)
-                db.add(new_mem)
-            db.commit()
-        finally:
-            db.close()
-            
+
+        def _store(extracted_facts: list[str]) -> None:
+            """Write the extracted facts on this thread's own Session.
+
+            Synchronous by design: the caller offloads it with
+            ``asyncio.to_thread`` so the insert stays off the event loop. This
+            function is reached after an ``await``, so committing inline would
+            block the loop — and every concurrent request with it — for the
+            duration of the write.
+            """
+            db = SessionLocal()
+            try:
+                for fact in extracted_facts:
+                    logger.info(f"🧠 Storing Memory for User {user_id}: {fact}")
+                    db.add(Memory(user_id=user_id, content=fact))
+                db.commit()
+            finally:
+                db.close()
+
+        await asyncio.to_thread(_store, facts)
+
     except Exception as e:
         logger.error(f"Memory extraction failed: {e}")
 

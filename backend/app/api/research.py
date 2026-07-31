@@ -51,11 +51,33 @@ def stream_research(request: ResearchRequest, user=Depends(get_current_user), db
     if not request.query or not request.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
+    # Read the ORM attribute we need up front: a plain value is what's safe to
+    # close over from the background coroutine and hand to a worker thread.
+    user_id = user.id
+
+    # Only adopt a caller-supplied conversation id after confirming this user
+    # owns it. Without the ownership filter, any caller could pass someone
+    # else's session id and have their prompt and the resulting report written
+    # into that stranger's conversation. Falling back to a fresh session (rather
+    # than erroring) both fixes the write and keeps the response from revealing
+    # whether the id exists.
     session_id = request.conversation_id
+    if session_id:
+        owned = db.query(ChatSession).filter(
+            ChatSession.id == session_id,
+            ChatSession.user_id == user_id,
+        ).first()
+        if not owned:
+            logger.warning(
+                "Research: user %s supplied a conversation id they do not own; "
+                "starting a new session instead.", user_id
+            )
+            session_id = None
+
     if not session_id:
         new_session = ChatSession(
             id=str(uuid.uuid4()),
-            user_id=user.id,
+            user_id=user_id,
             title=request.query[:50]
         )
         db.add(new_session)
@@ -74,10 +96,29 @@ def stream_research(request: ResearchRequest, user=Depends(get_current_user), db
         db.rollback()
         logger.error(f"Error saving research prompt: {e}")
 
-    async def background_research(queue: asyncio.Queue) -> None:
-        bg_db = None
+    def _save_report(report_content: str) -> None:
+        """Persist the finished report on its own short-lived Session.
+
+        Runs in a worker thread. This used to commit directly inside the
+        background coroutine, which froze the event loop — and so every other
+        live request and SSE stream — for the duration of the write. Opening the
+        Session here rather than for the life of the pipeline also stops a
+        pooled connection being pinned for the minutes a run can take.
+        """
+        thread_db = SessionLocal()
         try:
-            bg_db = SessionLocal()
+            thread_db.add(ChatMessage(
+                session_id=session_id,
+                role="assistant",
+                content=report_content,
+                model="deep-research",
+            ))
+            thread_db.commit()
+        finally:
+            thread_db.close()
+
+    async def background_research(queue: asyncio.Queue) -> None:
+        try:
             from app.core.config import settings
             model_to_use = request.model or getattr(settings, "DEEP_RESEARCH_DEFAULT_MODEL", "nvidia/nemotron-3-ultra-550b-a55b")
             async for event in run_pipeline(request.query.strip(), model=model_to_use):
@@ -92,22 +133,14 @@ def stream_research(request: ResearchRequest, user=Depends(get_current_user), db
                                 if citations:
                                     cit_str = "\n".join([f"[{c.get('index')}] [{c.get('title')}]({c.get('url')})" for c in citations])
                                     report_content += "\n\n---\n" + cit_str
-                                
-                                asst_msg = ChatMessage(
-                                    session_id=session_id,
-                                    role="assistant",
-                                    content=report_content,
-                                    model="deep-research"
-                                )
-                                bg_db.add(asst_msg)
-                                bg_db.commit()
+
+                                await asyncio.to_thread(_save_report, report_content)
                     except Exception as inner_e:
-                        bg_db.rollback()
                         logger.error(f"Failed to save deep research report: {inner_e}")
 
                 await queue.put(event)
         except asyncio.CancelledError:
-            # Client went away; unwind quietly so `finally` closes the session.
+            # Client went away; unwind quietly so `finally` sends END_OF_STREAM.
             raise
         except Exception:
             # Log the detail server-side and hand the client a generic frame so
@@ -118,8 +151,6 @@ def stream_research(request: ResearchRequest, user=Depends(get_current_user), db
                 "message": "Deep research failed. Please try again.",
             }))
         finally:
-            if bg_db:
-                bg_db.close()
             await queue.put(END_OF_STREAM)
 
     return StreamingResponse(

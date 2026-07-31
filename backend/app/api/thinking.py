@@ -8,9 +8,8 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
-from app.core.deps import get_current_user, get_db
+from app.core.deps import get_current_user
 from app.core.sse import END_OF_STREAM, SSE_HEADERS, sse_frame, sse_stream
 from app.database.db import SessionLocal
 from app.models.user import User
@@ -32,7 +31,6 @@ class ThinkingRequest(BaseModel):
 async def stream_thinking(
     request: ThinkingRequest,
     user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
 ):
     """
     Stream a deep thinking pipeline via Server-Sent Events.
@@ -46,71 +44,104 @@ async def stream_thinking(
         - thinking_complete: Final report with full reasoning chain
         - error: Error message
         - done: Pipeline complete
+
+    Takes no ``db``: every database touch runs in a worker thread on its own
+    short-lived Session. This coroutine is the head of an SSE stream, so a
+    blocking commit here stalls every other in-flight request for its duration.
     """
     if not request.query or not request.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
-    # Create or use existing session
-    session_id = request.conversation_id
-    if not session_id:
-        new_session = ChatSession(
-            id=str(uuid.uuid4()),
-            user_id=user.id,
-            title=request.query[:50],
-        )
-        db.add(new_session)
-        db.commit()
-        db.refresh(new_session)
-        session_id = str(new_session.id)
-    else:
-        # Verify session ownership
-        session = db.query(ChatSession).filter(
-            ChatSession.id == session_id,
-            ChatSession.user_id == user.id,
-        ).first()
-        if not session:
-            # Create a new one if session doesn't exist
-            import uuid
-            new_session = ChatSession(
-                id=str(uuid.uuid4()),
-                user_id=user.id,
-                title=request.query[:50],
-            )
-            db.add(new_session)
-            db.commit()
-            db.refresh(new_session)
-            session_id = str(new_session.id)
+    # Read the ORM attribute we need before any commit. expire_on_commit=True is
+    # the default, so a post-commit ``user.id`` would emit a lazy-load SELECT on
+    # the event loop. A plain value is also what's safe to hand to a thread.
+    user_id = user.id
+    query = request.query.strip()
 
-    # Save user message
-    try:
-        user_msg = ChatMessage(
-            session_id=session_id,
-            role="user",
-            content=request.query.strip(),
-            model="deep-thinking",
-        )
-        db.add(user_msg)
-        db.commit()
-    except Exception as e:
-        db.rollback()
-        logger = __import__("logging").getLogger(__name__)
-        logger.error(f"Error saving thinking prompt: {e}")
+    def _ensure_session_and_save_prompt(session_id_arg):
+        """Create-or-verify the session, then record the prompt.
 
-    import asyncio
-    from app.database.db import SessionLocal
+        Returns the session id as a plain string — never an ORM instance, which
+        would be bound to the Session this thread is about to close.
+
+        Preserves the original fallback: an unknown or unowned session id yields
+        a brand-new session rather than an error. The ownership filter means a
+        caller passing someone else's id simply gets their own new session, so
+        this leaks nothing.
+        """
+        thread_db = SessionLocal()
+        try:
+            resolved = session_id_arg
+            if resolved:
+                owned = thread_db.query(ChatSession).filter(
+                    ChatSession.id == resolved,
+                    ChatSession.user_id == user_id,
+                ).first()
+                if not owned:
+                    resolved = None
+
+            if not resolved:
+                new_session = ChatSession(
+                    id=str(uuid.uuid4()),
+                    user_id=user_id,
+                    title=query[:50],
+                )
+                thread_db.add(new_session)
+                thread_db.commit()
+                thread_db.refresh(new_session)
+                resolved = str(new_session.id)
+
+            # A failed prompt save must not kill the stream, matching the
+            # original behaviour: log it and carry on with the pipeline.
+            try:
+                thread_db.add(ChatMessage(
+                    session_id=resolved,
+                    role="user",
+                    content=query,
+                    model="deep-thinking",
+                ))
+                thread_db.commit()
+            except Exception as e:
+                thread_db.rollback()
+                logger.error(f"Error saving thinking prompt: {e}")
+
+            return resolved
+        finally:
+            thread_db.close()
+
+    session_id = await asyncio.to_thread(
+        _ensure_session_and_save_prompt, request.conversation_id
+    )
+
     queue = asyncio.Queue()
 
-    async def background_thinking():
-        bg_db = None
+    def _save_report(report_content):
+        """Persist the finished report on its own short-lived Session.
+
+        Runs in a worker thread: this used to commit directly inside the
+        create_task coroutine, which froze the loop — and therefore every other
+        live request and SSE stream — for the duration of the write.
+        """
+        thread_db = SessionLocal()
         try:
-            bg_db = SessionLocal()
+            thread_db.add(ChatMessage(
+                session_id=session_id,
+                role="assistant",
+                content=report_content,
+                model="deep-thinking",
+            ))
+            thread_db.commit()
+        finally:
+            thread_db.close()
+
+    async def background_thinking():
+        try:
             model_to_use = request.model or None
             async for event in run_thinking_pipeline(
                 request.query.strip(), model=model_to_use
             ):
                 if event.startswith("data: "):
                     try:
-                        import json
                         data_str = event[6:].strip()
                         if data_str:
                             data = json.loads(data_str)
@@ -150,32 +181,18 @@ async def stream_thinking(
                                     for c in caveats:
                                         report_content += f"- {c}\n"
 
-                                # Save to database
-                                asst_msg = ChatMessage(
-                                    session_id=session_id,
-                                    role="assistant",
-                                    content=report_content,
-                                    model="deep-thinking",
-                                )
-                                bg_db.add(asst_msg)
-                                bg_db.commit()
+                                # Persist the finished report off-loop.
+                                await asyncio.to_thread(_save_report, report_content)
                     except Exception as inner_e:
-                        import logging
-                        logging.getLogger(__name__).error(
+                        logger.error(
                             f"Failed to save deep thinking report: {inner_e}"
                         )
-                        bg_db.rollback()
                 await queue.put(event)
             await queue.put(None)
         except Exception as e:
-            import json
-            logger = __import__("logging").getLogger(__name__)
             logger.error(f"Deep thinking stream error: {e}")
             await queue.put(f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n")
             await queue.put(None)
-        finally:
-            if bg_db:
-                bg_db.close()
 
     asyncio.create_task(background_thinking())
 

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
+import asyncio
 import os
 
 try:
@@ -17,6 +18,7 @@ except ImportError:
     stripe = None  # type: ignore
 
 from app.core.deps import get_db, get_current_user
+from app.database.db import SessionLocal
 from app.models.user import User
 from app.services.subscription_service import (
     get_available_plans,
@@ -209,10 +211,14 @@ def create_checkout_session(req: SubscribeRequest, request: Request, user: User 
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/webhooks/stripe")
-async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
+async def stripe_webhook(request: Request):
     """
     Secure webhook listener for Stripe.
     Idempotently updates user subscriptions on checkout.session.completed events.
+
+    Takes no ``db``: the plan-assignment write runs in a worker thread on its own
+    short-lived Session. Webhooks fire concurrently, and a blocking commit here
+    would stall every concurrent request for the round-trip.
     """
     payload = await request.body()
     sig_header = request.headers.get("stripe-signature")
@@ -235,13 +241,20 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
         plan_id = session.get("metadata", {}).get("plan_id")
         
         if user_id and plan_id:
-            assign_plan_to_user(user_id, plan_id, db)
-            
-            # Optionally save the Stripe customer ID to the user for future portal sessions
-            user = db.query(User).filter(User.id == user_id).first()
-            if user:
-                # We could store customer_id in a new column or metadata json
-                pass
+            def _assign():
+                """Assign the plan on this thread's own Session.
+
+                A Session must not cross threads, so this opens and closes its
+                own. Returns nothing: the ORM instance would be detached the
+                moment the Session closes, and the caller doesn't need it.
+                """
+                thread_db = SessionLocal()
+                try:
+                    assign_plan_to_user(user_id, plan_id, thread_db)
+                finally:
+                    thread_db.close()
+
+            await asyncio.to_thread(_assign)
 
     return {"status": "success"}
 
