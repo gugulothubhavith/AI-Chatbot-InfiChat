@@ -1,9 +1,11 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.auth import decode_token
+from app.core.config import settings
 from app.database.db import get_db
 from sqlalchemy.orm import Session
 from app.models.user import User
+from app.services.consent_service import is_consent_current
 import logging
 import uuid
 
@@ -160,4 +162,52 @@ def get_current_user_optional(
     if user is not None and user.is_active is False:
         return None
 
+    return user
+
+
+def require_consent(
+    security_scopes: SecurityScopes,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db),
+) -> User:
+    """Authenticate, then block until the user accepts the current policies.
+
+    Returns **403 CONSENT_REQUIRED** with the versions the client must present
+    back to ``POST /legal/consent``. Enforced here rather than in the UI: a
+    client-side gate is decorative, since the API is reachable directly with a
+    token.
+
+    The signature mirrors :func:`get_current_user` exactly so this is a drop-in
+    replacement for both ``Depends(get_current_user)`` and
+    ``Security(get_current_user, scopes=[...])``. It delegates with a direct
+    call rather than ``Depends(get_current_user)`` so the declared scopes reach
+    the scope check — a nested ``Depends`` would swallow them and silently
+    downgrade every scoped endpoint to unscoped.
+
+    Deliberately *not* applied to auth, logout, consent, account-deletion, or
+    data-export endpoints — a user who declines must still be able to log out,
+    read their data, and delete their account. Gating those would trap them in
+    an account they cannot leave, which itself breaches the withdrawal right
+    (GDPR Art. 7(3)) the gate exists to support.
+
+    Plain ``def`` for the same reason as :func:`get_current_user`: it does one
+    synchronous query via that call and must not run on the event loop.
+    """
+    user = get_current_user(security_scopes, credentials, db)
+
+    if not is_consent_current(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "CONSENT_REQUIRED",
+                "message": (
+                    "You must accept the current Terms of Service and Privacy "
+                    "Policy to continue."
+                ),
+                "required_terms_version": settings.CURRENT_TERMS_VERSION,
+                "required_privacy_version": settings.CURRENT_PRIVACY_VERSION,
+                "accepted_terms_version": user.terms_accepted_version,
+                "accepted_privacy_version": user.privacy_accepted_version,
+            },
+        )
     return user

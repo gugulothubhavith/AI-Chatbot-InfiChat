@@ -28,14 +28,28 @@ class User(Base):
     # TOTP / MFA
     totp_secret = Column(String, nullable=True) # Base32 generic secret
     is_mfa_enabled = Column(Boolean, default=False)
-    
+
+    # ── Consent (Terms of Service / Privacy Policy) ─────────────────────
+    # Current accepted state. The append-only history lives in
+    # ``consent_events``; these columns are the fast path the request-time
+    # gate in app/core/deps.py reads on every protected request.
+    # NULL means "never consented" — every pre-existing row after the
+    # migration, which is why the gate treats NULL as stale rather than
+    # grandfathering it.
+    terms_accepted_version = Column(String, nullable=True)
+    privacy_accepted_version = Column(String, nullable=True)
+    consent_accepted_at = Column(DateTime, nullable=True)
+    consent_ip = Column(String, nullable=True)
+    consent_user_agent = Column(String, nullable=True)
+
     organization = relationship("Organization", back_populates="users")
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    
+
     memories = relationship("Memory", back_populates="user", cascade="all, delete-orphan")
     chat_sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
     snippets = relationship("Snippet", back_populates="user", cascade="all, delete-orphan")
     sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
+    consent_events = relationship("ConsentEvent", back_populates="user", cascade="all, delete-orphan")
 
 class UserSession(Base):
     __tablename__ = "user_sessions"

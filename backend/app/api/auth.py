@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.core.auth import create_access_token, create_refresh_token, decode_token, verify_token_type, hash_password, verify_password
 from app.core.security import limiter
 from app.core.cookies import set_refresh_cookie, clear_refresh_cookie
+from app.services.consent_service import record_consent
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -141,9 +142,30 @@ def verify_otp(request: Request, response: Response, payload: OTPVerify, backgro
         db.commit()
         raise HTTPException(status_code=400, detail="Password verification required for this account.")
 
+    # 5b. This endpoint doubles as a registration path, so first-time OTP
+    # sign-in needs the same mandatory consent as /auth/register. Checked
+    # before the OTP is consumed so a rejected signup can retry with the
+    # same code instead of having to request a fresh one.
+    # Only enforced when creating an account: an existing user must be able to
+    # log in even with stale consent, or they could never reach the re-consent
+    # and account-deletion endpoints.
+    if not user and (not payload.accept_terms or not payload.accept_privacy):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "CONSENT_REQUIRED",
+                "message": (
+                    "You must accept the Terms of Service and the Privacy "
+                    "Policy to create an account."
+                ),
+                "required_terms_version": settings.CURRENT_TERMS_VERSION,
+                "required_privacy_version": settings.CURRENT_PRIVACY_VERSION,
+            },
+        )
+
     # 6. Success - Delete OTP
     db.delete(otp_record)
-    
+
     # 7. Get or Create User
     is_new = False
     if not user:
@@ -154,6 +176,8 @@ def verify_otp(request: Request, response: Response, payload: OTPVerify, backgro
             is_verified=True
         )
         db.add(user)
+        db.flush()  # assign user.id before the consent audit row references it
+        record_consent(db, user, request=request)
     else:
         if not user.is_verified:
             user.is_verified = True
@@ -238,6 +262,12 @@ def login(request: Request, response: Response, payload: UserLogin, background_t
         from app.models.user import RoleEnum
         total_users = db.query(User).count()
         if total_users == 0:
+            # No consent is recorded here on purpose. /auth/login carries no
+            # consent payload, and fabricating an acceptance the operator
+            # never made would be a false audit record. The bootstrap admin is
+            # left with NULL consent, so require_consent blocks them on their
+            # first protected request until they accept via POST
+            # /legal/consent — the gate is the backstop for this path.
             user = User(
                 email=email,
                 username=email.split("@")[0],
@@ -482,14 +512,35 @@ def update_password(
 def register(request: Request, response: Response, payload: UserCreate, db: Session = Depends(get_db)):
     """
     Register a new user with email and password.
+
+    Both consent flags are mandatory: signup is refused outright without
+    them, rather than inferring agreement from the act of registering.
+    Passive acceptance is not valid consent under GDPR Art. 7 / India DPDP.
     """
+    # Consent gate first — reject before creating anything.
+    if not payload.accept_terms or not payload.accept_privacy:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "CONSENT_REQUIRED",
+                "message": (
+                    "You must accept the Terms of Service and the Privacy "
+                    "Policy to create an account."
+                ),
+                "required_terms_version": settings.CURRENT_TERMS_VERSION,
+                "required_privacy_version": settings.CURRENT_PRIVACY_VERSION,
+                "accept_terms": payload.accept_terms,
+                "accept_privacy": payload.accept_privacy,
+            },
+        )
+
     email = payload.email.lower()
-    
+
     # Check if user exists
     user = db.query(User).filter(User.email == email).first()
     if user:
         raise HTTPException(status_code=400, detail="Email already registered")
-        
+
     # Create new user — first ever user gets auto-promoted to admin
     from app.models.user import RoleEnum
     user_count = db.query(User).count()
@@ -503,6 +554,12 @@ def register(request: Request, response: Response, payload: UserCreate, db: Sess
         role=new_role,
     )
     db.add(new_user)
+    db.flush()  # assign new_user.id so the consent audit row can reference it
+
+    # Record consent in the same transaction as the user row: an account must
+    # never exist without its consent record.
+    record_consent(db, new_user, request=request)
+
     db.commit()
     db.refresh(new_user)
 
@@ -603,9 +660,19 @@ def read_users_me(current_user: User = Depends(get_current_user), db: Session = 
 
 
 @router.post("/google", response_model=AuthResponse)
-def google_login(response: Response, payload: dict, db: Session = Depends(get_db)):
+def google_login(request: Request, response: Response, payload: dict, db: Session = Depends(get_db)):
     """
     Login with Google credential. Generates JWT directly and sets up AdminSession if applicable.
+
+    First-time sign-in through Google is a *registration*, so it carries the
+    same mandatory consent gate as ``POST /auth/register``: the client must
+    send ``accept_terms`` and ``accept_privacy``. Returning users are let
+    through here and picked up by the request-time gate if their accepted
+    version has gone stale, so a policy change cannot lock them out of
+    logging in to withdraw or export their data.
+
+    ``request`` is required to capture the consent IP and user agent for the
+    audit record.
     """
     from google.oauth2 import id_token
     from google.auth.transport import requests as google_requests
@@ -668,8 +735,26 @@ def google_login(response: Response, payload: dict, db: Session = Depends(get_db
     # 1. Get or Create User
     user = db.query(User).filter(User.email == email).first()
     is_new = False
-    
+
     if not user:
+        # New account via Google == registration, so consent is mandatory.
+        # Checked only on this branch: an existing user must still be able to
+        # log in when the policy version changes, otherwise a stale user could
+        # never reach the re-consent or account-deletion endpoints.
+        if not payload.get("accept_terms") or not payload.get("accept_privacy"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "code": "CONSENT_REQUIRED",
+                    "message": (
+                        "You must accept the Terms of Service and the Privacy "
+                        "Policy to create an account."
+                    ),
+                    "required_terms_version": settings.CURRENT_TERMS_VERSION,
+                    "required_privacy_version": settings.CURRENT_PRIVACY_VERSION,
+                },
+            )
+
         is_new = True
         user = User(
             email=email,
@@ -680,6 +765,8 @@ def google_login(response: Response, payload: dict, db: Session = Depends(get_db
         if "picture" in idinfo:
             user.avatar_url = idinfo["picture"]
         db.add(user)
+        db.flush()  # assign user.id before the consent audit row references it
+        record_consent(db, user, request=request)
         db.commit()
         db.refresh(user)
     else:

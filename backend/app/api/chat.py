@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Request, Security
 from fastapi.responses import StreamingResponse
-from app.core.deps import get_current_user, get_db
+from app.core.deps import get_current_user, require_consent, get_db
 from app.models.user import User
 from app.models.chat import ChatSession, ChatMessage, SharedChat
 from app.schemas.chat import ChatRequest, ChatResponse, ChatSessionSchema, ChatSessionUpdate, ChatSessionCreate, ChatExport
@@ -20,7 +20,7 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
 def list_sessions(
     workspace: Optional[str] = Query("personal"),
     db: Session = Depends(get_db),
-    user: User = Security(get_current_user, scopes=["chat:read"])
+    user: User = Security(require_consent, scopes=["chat:read"])
 ):
     sessions = db.query(ChatSession).filter(
         ChatSession.user_id == user.id,
@@ -32,7 +32,7 @@ def list_sessions(
 def create_session(
     payload: Optional[ChatSessionCreate] = None,
     db: Session = Depends(get_db),
-    user: User = Security(get_current_user, scopes=["chat:write"])
+    user: User = Security(require_consent, scopes=["chat:write"])
 ):
     new_session = ChatSession(user_id=user.id)
     if payload:
@@ -51,7 +51,7 @@ def update_session(
     session_id: str,
     update_data: ChatSessionUpdate,
     db: Session = Depends(get_db),
-    user: User = Security(get_current_user, scopes=["chat:write"])
+    user: User = Security(require_consent, scopes=["chat:write"])
 ):
     session = db.query(ChatSession).filter(ChatSession.id == session_id, ChatSession.user_id == user.id).first()
     if not session:
@@ -69,7 +69,7 @@ def update_session(
 def delete_session(
     session_id: str,
     db: Session = Depends(get_db),
-    user: User = Security(get_current_user, scopes=["chat:write"])
+    user: User = Security(require_consent, scopes=["chat:write"])
 ):
     session = db.query(ChatSession).filter(ChatSession.id == session_id, ChatSession.user_id == user.id).first()
     if not session:
@@ -104,7 +104,7 @@ def delete_session(
 def list_messages(
     session_id: str,
     db: Session = Depends(get_db),
-    user: User = Security(get_current_user, scopes=["chat:read"])
+    user: User = Security(require_consent, scopes=["chat:read"])
 ):
     session = db.query(ChatSession).filter(ChatSession.id == session_id, ChatSession.user_id == user.id).first()
     if not session:
@@ -117,7 +117,7 @@ def list_messages(
 def search_chats(
     q: str = Query(..., min_length=1),
     db: Session = Depends(get_db),
-    user: User = Security(get_current_user, scopes=["chat:read"])
+    user: User = Security(require_consent, scopes=["chat:read"])
 ):
     # Search in session titles and message content
     results = db.query(ChatSession).join(ChatMessage).filter(
@@ -132,7 +132,7 @@ def search_chats(
 async def chat_message(
     request: Request,
     payload: ChatRequest,
-    user: User = Security(get_current_user, scopes=["chat:write"])
+    user: User = Security(require_consent, scopes=["chat:write"])
 ):
     # No ``db`` dependency: process_chat opens its own short-lived sessions in
     # worker threads. Note this does not free the request's pooled connection —
@@ -154,7 +154,7 @@ async def chat_message(
 async def chat_stream(
     request: Request,
     payload: ChatRequest,
-    user: User = Security(get_current_user, scopes=["chat:write"])
+    user: User = Security(require_consent, scopes=["chat:write"])
 ):
     # Same as /message: no ``db`` here because process_chat manages its own
     # sessions per worker thread. See the note there about what this does not fix.

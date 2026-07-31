@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.core.deps import get_current_user, get_db
+from app.core.deps import require_consent, get_db
 from app.models.user import User
 from app.models.snippets import Snippet
 from pydantic import BaseModel, ConfigDict
@@ -30,7 +30,7 @@ class SnippetResponse(BaseModel):
 @router.get("/", response_model=List[SnippetResponse])
 def list_snippets(
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    user: User = Depends(require_consent)
 ):
     return db.query(Snippet).filter(Snippet.user_id == user.id).order_by(Snippet.created_at.desc()).all()
 
@@ -38,7 +38,7 @@ def list_snippets(
 def create_snippet(
     payload: SnippetCreate,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    user: User = Depends(require_consent)
 ):
     snippet = Snippet(
         user_id=user.id,
@@ -56,7 +56,7 @@ def create_snippet(
 def delete_snippet(
     snippet_id: str,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    user: User = Depends(require_consent)
 ):
     snippet = db.query(Snippet).filter(Snippet.id == snippet_id, Snippet.user_id == user.id).first()
     if not snippet:

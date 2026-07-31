@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from app.services.indic_voice_service import indic_voice_service
 from app.services import voice_service
 from app.schemas.voice import TTSRequest
-from app.core.deps import get_current_user
+from app.core.deps import require_consent
 from app.models.user import User
 import tempfile
 import os
@@ -43,7 +43,7 @@ def _normalize_language(raw: str | None) -> str | None:
 async def transcribe_audio(
     file: UploadFile = File(...),
     language: str | None = Form(default=None),
-    user: User = Depends(get_current_user)
+    user: User = Depends(require_consent)
 ):
     filepath = None
     try:
@@ -100,7 +100,7 @@ async def transcribe_audio(
 @router.post("/tts")
 async def text_to_speech(
     request: TTSRequest,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_consent),
 ):
     """Professional Indic TTS streaming via Edge-TTS.
 

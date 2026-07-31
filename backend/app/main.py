@@ -390,13 +390,14 @@ async def health(request: Request):
     }
 
 
-from app.api import auth, chat, code_agent, rag, image, admin, ws_code, ws_agent, voice, snippets, settings as settings_api, api_keys, admin_governance, admin_security, admin_zero_trust, metrics, organizations, proxy, ws_broadcast, system, research, thinking, subscriptions, web_search
+from app.api import auth, chat, code_agent, rag, image, admin, ws_code, ws_agent, voice, snippets, settings as settings_api, api_keys, admin_governance, admin_security, admin_zero_trust, metrics, organizations, proxy, ws_broadcast, system, research, thinking, subscriptions, web_search, legal
 
 # --- API v1 Router Registration (versioned endpoints) ---
 # All REST API routes are prefixed with /api/v1 for professional versioning
 API_V1_PREFIX = "/api/v1"
 
 app.include_router(auth.router, prefix=API_V1_PREFIX)
+app.include_router(legal.router, prefix=API_V1_PREFIX)
 app.include_router(chat.router, prefix=API_V1_PREFIX)
 app.include_router(rag.router, prefix=API_V1_PREFIX)
 app.include_router(code_agent.router, prefix=API_V1_PREFIX)
@@ -427,6 +428,7 @@ app.include_router(system.router, prefix=API_V1_PREFIX)
 # only two URL surfaces. Do not remove until both older frontends migrate to
 # /api/v1, or their requests will 404.
 app.include_router(auth.router)
+app.include_router(legal.router)
 app.include_router(chat.router)
 app.include_router(admin.router)
 app.include_router(admin_governance.router)

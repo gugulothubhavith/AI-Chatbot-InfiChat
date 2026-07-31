@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from app.core.deps import get_current_user, get_db
+from app.core.deps import require_consent, get_db
 from sqlalchemy.orm import Session
 from app.models.user import User
 from app.models.chat import ChatMessage, ChatSession
@@ -50,7 +50,7 @@ def _make_placeholder_image(prompt: str, width: int, height: int, reason: str) -
 async def image_generate(
     request: Request,
     payload: ImageGenerateRequest,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_consent),
     db: Session = Depends(get_db)
 ):
     """Generate image using Hugging Face Inference API with PIL placeholder fallback."""

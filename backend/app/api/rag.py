@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Request
-from app.core.deps import get_current_user
+from app.core.deps import require_consent
 from app.models.user import User
 from app.services.rag_service import ingest_document, query_rag
 
@@ -17,7 +17,7 @@ async def rag_upload(
     request: Request,
     file: UploadFile = File(...),
     conversation_id: str = Form(None),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_consent),
     db: Session = Depends(get_db)
 ):
     print(f"RAG Upload Request: {file.filename} (user: {user.email})")
@@ -28,7 +28,7 @@ async def rag_upload(
 @router.post("/query")
 def rag_query(
     payload: dict,
-    user: User = Depends(get_current_user)
+    user: User = Depends(require_consent)
 ):
     query_text = payload.get("query")
     n_results = payload.get("n_results", 5)
@@ -41,12 +41,12 @@ def rag_query(
     return {"results": results['documents'][0]}
 
 @router.get("/documents")
-def get_documents(user: User = Depends(get_current_user)):
+def get_documents(user: User = Depends(require_consent)):
     from app.services.rag_service import list_documents
     return {"documents": list_documents()}
 
 @router.delete("/documents/{filename}")
-def delete_document_endpoint(filename: str, user: User = Depends(get_current_user)):
+def delete_document_endpoint(filename: str, user: User = Depends(require_consent)):
     from app.services.rag_service import delete_document
     delete_document(filename)
     return {"status": "deleted", "filename": filename}

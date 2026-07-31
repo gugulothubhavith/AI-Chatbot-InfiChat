@@ -154,6 +154,10 @@ class Settings(BaseSettings):
             )
         return self
 
+    # --- Legal document versions (match frontmatter in Frontend-New/src/content/legal/*.md) ---
+    CURRENT_TERMS_VERSION: str = "1.0.0"
+    CURRENT_PRIVACY_VERSION: str = "1.0.0"
+
     # --- Database & Cache ---
     DATABASE_URL: str = os.getenv("DATABASE_URL", "")
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://redis:6379/0")

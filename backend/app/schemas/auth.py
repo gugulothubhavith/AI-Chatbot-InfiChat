@@ -7,6 +7,10 @@ class OTPRequest(BaseModel):
 class OTPVerify(BaseModel):
     email: EmailStr
     otp: str
+    # Consent flags — required only when this verification creates a new
+    # account, since /auth/verify-otp doubles as a registration path.
+    accept_terms: bool = False
+    accept_privacy: bool = False
 
 class AuthResponse(BaseModel):
     access_token: str
@@ -27,6 +31,9 @@ class TokenRefresh(BaseModel):
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
+    # Explicit consent flags — required at registration (Phase 3.2)
+    accept_terms: bool = False
+    accept_privacy: bool = False
 
 class UserLogin(BaseModel):
     email: EmailStr

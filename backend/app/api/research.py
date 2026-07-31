@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from app.core.concurrency import deep_research_limiter, limit_concurrency
-from app.core.deps import get_current_user, get_db
+from app.core.deps import require_consent, get_db
 from app.core.sse import END_OF_STREAM, SSE_HEADERS, sse_frame, sse_stream
 from app.database.db import SessionLocal
 from sqlalchemy.orm import Session
@@ -28,7 +28,7 @@ class ResearchRequest(BaseModel):
 
 
 @router.post("/research/stream", dependencies=[Depends(limit_concurrency(deep_research_limiter))])
-def stream_research(request: ResearchRequest, user=Depends(get_current_user), db: Session = Depends(get_db)):
+def stream_research(request: ResearchRequest, user=Depends(require_consent), db: Session = Depends(get_db)):
     """
     Stream a deep research pipeline via Server-Sent Events.
 

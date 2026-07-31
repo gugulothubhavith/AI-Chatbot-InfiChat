@@ -19,6 +19,7 @@ from app.models.incidents import IncidentTicket, AutoHealingEvent
 from app.models.system import SystemUpdate
 from app.models.subscription import SubscriptionPlan, UserSubscription, UsageRecord
 from app.models.api_keys import PersonalAccessToken
+from app.models.consent import ConsentEvent
 
 __all__ = [
     "Base",
@@ -56,5 +57,6 @@ __all__ = [
     "SubscriptionPlan",
     "UserSubscription",
     "UsageRecord",
-    "PersonalAccessToken"
+    "PersonalAccessToken",
+    "ConsentEvent"
 ]

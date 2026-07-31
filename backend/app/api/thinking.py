@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from app.core.deps import get_current_user
+from app.core.deps import require_consent
 from app.core.sse import END_OF_STREAM, SSE_HEADERS, sse_frame, sse_stream
 from app.database.db import SessionLocal
 from app.models.user import User
@@ -30,7 +30,7 @@ class ThinkingRequest(BaseModel):
 @router.post("/thinking/stream")
 async def stream_thinking(
     request: ThinkingRequest,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_consent),
 ):
     """
     Stream a deep thinking pipeline via Server-Sent Events.

@@ -7,7 +7,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from app.core.deps import get_current_user
+from app.core.deps import require_consent
 from app.models.chat import ChatMessage, ChatSession
 from app.services.web_search.orchestrator import run_web_search
 
@@ -32,7 +32,7 @@ class WebSearchRequest(BaseModel):
 
 
 @router.post("/web_search/stream")
-async def stream_web_search(request: WebSearchRequest, user=Depends(get_current_user)):
+async def stream_web_search(request: WebSearchRequest, user=Depends(require_consent)):
     """
     Stream a fast web search pipeline via Server-Sent Events.
 

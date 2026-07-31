@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
-from app.core.deps import get_current_user
+from app.core.deps import require_consent
 from app.models.user import User
 from app.schemas.code import (
     CodeGenerateRequest, CodeRefactorRequest, CodeExplainRequest,
@@ -26,7 +26,7 @@ _concurrency_cap = Depends(limit_concurrency(code_agent_limiter))
 async def code_generate(
     request: Request,
     payload: CodeGenerateRequest,
-    user: User = Depends(get_current_user)
+    user: User = Depends(require_consent)
 ):
     if payload.use_agents:
         from app.services.agent_service import run_orchestration
@@ -41,7 +41,7 @@ async def code_generate(
 async def code_refactor(
     request: Request,
     payload: CodeRefactorRequest,
-    user: User = Depends(get_current_user)
+    user: User = Depends(require_consent)
 ):
     return await refactor_code(payload, user)
 
@@ -50,7 +50,7 @@ async def code_refactor(
 async def code_explain(
     request: Request,
     payload: CodeExplainRequest,
-    user: User = Depends(get_current_user)
+    user: User = Depends(require_consent)
 ):
     return await explain_code(payload, user)
 
@@ -59,7 +59,7 @@ async def code_explain(
 async def code_test(
     request: Request,
     payload:  CodeTestRequest,
-    user:  User = Depends(get_current_user)
+    user:  User = Depends(require_consent)
 ):
     return await generate_tests(payload, user)
 
