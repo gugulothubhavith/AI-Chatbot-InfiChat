@@ -21,48 +21,68 @@ async def run(state: ResearchState, llm_call) -> ResearchState:
         logger.warning("CrossValidation: not enough sources with content")
         return state
 
-    # 1. Extract key claims using LLM
+    # 1. Map Phase: Chunk sources into batches of 5
     topic = state.brief.topic if state.brief else state.query
-    top_sources = sorted(sources_with_content, key=lambda s: s.authority_score, reverse=True)[:10]
+    
+    # We use all sources with content now, not just the top 10!
+    import asyncio
+    
+    # Sort by authority but use up to 30
+    all_sources = sorted(sources_with_content, key=lambda s: s.authority_score, reverse=True)[:30]
+    
+    batch_size = 5
+    batches = [all_sources[i:i + batch_size] for i in range(0, len(all_sources), batch_size)]
+    
+    async def extract_claims_from_batch(batch):
+        source_summaries = ""
+        for i, src in enumerate(batch):
+            text = (src.full_text or src.snippet)[:600]
+            source_summaries += f"\n[Source {src.id}: {src.title}]\n{text}\n"
 
-    source_summaries = ""
-    for i, src in enumerate(top_sources):
-        text = (src.full_text or src.snippet)[:600]
-        source_summaries += f"\n[Source {i+1}: {src.title}]\n{text}\n"
-
-    claim_prompt = f"""Analyze these sources about "{topic}" and extract 2-4 key factual claims. Ensure extraction is highly concise.
+        claim_prompt = f"""Analyze these sources about "{topic}" and extract 2-4 key factual claims. Ensure extraction is highly concise.
 
 {source_summaries}
 
-For each claim, note which sources support or contradict it.
+For each claim, note which source IDs support or contradict it.
 Return JSON array:
 [
   {{
     "claim": "factual statement",
-    "supporting_sources": [1, 3, 5],
-    "contradicting_sources": [2],
+    "supporting_sources": ["id1", "id2"],
+    "contradicting_sources": [],
     "confidence": 0.85
   }}
 ]
 
 Return ONLY valid JSON array."""
-
-    facts = []
-    try:
-        response = await llm_call([{"role": "user", "content": claim_prompt}])
-        text = response.strip()
         
+        try:
+            response = await llm_call([{"role": "user", "content": claim_prompt}])
+            return extract_json_from_text(response.strip())
+        except Exception as e:
+            logger.warning(f"CrossValidation Map LLM failed: {e}")
+            return []
 
-        import json
-        claims_data = extract_json_from_text(text)
-
+    # Run map phase concurrently
+    logger.info(f"CrossValidation: Running {len(batches)} concurrent Map-Reduce tasks")
+    map_results = await asyncio.gather(*(extract_claims_from_batch(b) for b in batches))
+    
+    facts = []
+    
+    # Reduce Phase: Merge and determine stance
+    # In a fully strict map-reduce, we would run another LLM call to deduplicate these facts.
+    # For now, we flatten and calculate stance manually to save time.
+    for claims_data in map_results:
+        if not claims_data or not isinstance(claims_data, list):
+            continue
+            
         for claim_data in claims_data:
             supporting = claim_data.get("supporting_sources", [])
             contradicting = claim_data.get("contradicting_sources", [])
 
-            # Map source indices to actual source objects
-            sup_sources = [top_sources[i-1] for i in supporting if 0 < i <= len(top_sources)]
-            con_sources = [top_sources[i-1] for i in contradicting if 0 < i <= len(top_sources)]
+            # Map source IDs back to actual source objects for domain checks
+            sup_sources = [s for s in all_sources if s.id in supporting]
+            con_sources = [s for s in all_sources if s.id in contradicting]
             
             sup_ids = [s.id for s in sup_sources]
             con_ids = [s.id for s in con_sources]
@@ -88,8 +108,9 @@ Return ONLY valid JSON array."""
                 source_count=len(sup_ids) + len(con_ids),
             ))
 
-    except Exception as e:
-        logger.warning(f"CrossValidation LLM failed: {e}. Using TF-IDF fallback.")
+    if not facts:
+        logger.warning(f"CrossValidation LLM extracted 0 facts. Using TF-IDF fallback.")
+        top_sources = all_sources[:10]
         # Fallback: compute pairwise similarity between sources
         for i, src_a in enumerate(top_sources[:5]):
             text_a = (src_a.full_text or src_a.snippet)[:500]

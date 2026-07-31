@@ -55,6 +55,8 @@ class ResearchSubtopic(BaseModel):
     priority: str = "medium"  # high, medium, low
     source_types_needed: List[str] = Field(default_factory=list)
     queries: List[str] = Field(default_factory=list)
+    status: str = "active"  # active, pruned, completed
+    score: float = 0.0
 
 
 class ResearchPlan(BaseModel):

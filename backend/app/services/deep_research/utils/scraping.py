@@ -152,27 +152,13 @@ async def fetch_url(url: str, timeout: float = 15.0) -> dict:
 
 async def _fetch_playwright(url: str, timeout: float = 20.0):
     """Fallback fetcher using headless Chromium to defeat JS walls and blockers."""
-    try:
-        from playwright.async_api import async_playwright
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            )
-            response = await page.goto(url, wait_until="networkidle", timeout=timeout*1000)
-            
-            if not response:
-                await browser.close()
-                return None, None
-                
-            content_type = response.headers.get("content-type", "text/html")
-            html = await page.content()
-            await browser.close()
-            
-            return html, content_type
-    except Exception as e:
-        logger.debug(f"Playwright fetch failed for {url}: {e}")
-        return None, None
+    from app.services.deep_research.scraper.vision_scraper import visual_scrape
+    
+    text = await visual_scrape(url, timeout=int(timeout*1000))
+    if text:
+        # We don't have raw HTML, but we have the clean text!
+        return f"<html><body>{text}</body></html>", "text/html"
+    return None, None
 
 
 async def _extract_pdf(url: str, timeout: float = 20.0) -> dict:
@@ -216,10 +202,10 @@ async def _extract_pdf(url: str, timeout: float = 20.0) -> dict:
 
 async def search_searxng(query: str, max_results: int = 10, engines: str = "google,bing,duckduckgo,wikipedia,qwant", time_range: str = "") -> List[dict]:
     """Search SearxNG via REST API for highly advanced multi-engine results."""
-    import os
     import httpx
-    
-    searxng_url = os.environ.get("SEARXNG_URL", "http://localhost:8080").rstrip("/")
+    from app.core.config import settings
+
+    searxng_url = (settings.SEARXNG_URL or "http://localhost:8080").rstrip("/")
     url = f"{searxng_url}/search"
     params = {
         "q": query,
@@ -231,7 +217,7 @@ async def search_searxng(query: str, max_results: int = 10, engines: str = "goog
     }
     if time_range:
         params["time_range"] = time_range
-    
+
     cache_key = f"searxng:{engines}:{time_range}:{query}:{max_results}"
     cached = _cache_get(cache_key)
     if cached:
@@ -243,18 +229,19 @@ async def search_searxng(query: str, max_results: int = 10, engines: str = "goog
             resp = await client.get(url, params=params)
             resp.raise_for_status()
             data = resp.json()
-            
+
             for r in data.get("results", [])[:max_results]:
                 results.append({
                     "title": r.get("title", ""),
                     "url": r.get("url", ""),
                     "snippet": r.get("content", ""),
-                    "source_type": "web"
+                    "source_type": "web",
+                    "date": r.get("publishedDate"),
                 })
         logger.info(f"SearxNG found {len(results)} results for '{query[:60]}'")
     except Exception as e:
         logger.warning(f"SearxNG search failed for '{query[:60]}': {e}")
-        
+
     _cache_set(cache_key, {"results": results})
     return results
 
@@ -303,78 +290,132 @@ async def search_duckduckgo(query: str, max_results: int = 5) -> List[dict]:
     return results
 
 
-async def search_fallback_llm(query: str, llm_call_fn: Callable, max_results: int = 5) -> List[dict]:
-    """Generate simulated but realistic search results via LLM when search is unavailable.
+async def search_wikipedia(query: str, max_results: int = 5) -> List[dict]:
+    """Search Wikipedia via the official MediaWiki API. Real results only."""
+    import httpx
 
-    The LLM is prompted to produce results that look like real search engine output.
-    """
-    prompt = f"""You are a search engine simulator. Generate {max_results} realistic, plausible search results for the query:
+    cache_key = f"wiki:{query}:{max_results}"
+    cached = _cache_get(cache_key)
+    if cached:
+        return cached["results"]
 
-Query: "{query}"
-
-For each result, provide:
-- title: A realistic webpage title
-- url: A plausible URL (use real domains like reuters.com, nature.com, bbc.com, techcrunch.com, etc.)
-- snippet: A 2-3 sentence summary of what the page would contain
-- source_type: one of "web", "news", "academic"
-
-Return ONLY a JSON array:
-[
-  {{
-    "title": "...",
-    "url": "https://...",
-    "snippet": "...",
-    "source_type": "web|news|academic"
-  }}
-]
-
-Make the results specific, factual-sounding, and relevant to the query. Do NOT use placeholder text. Do NOT include markdown formatting."""
-
+    results: List[dict] = []
     try:
-        response = await llm_call_fn([{"role": "user", "content": prompt}])
-        text = response.strip()
-        
-        # Parse using the robust parser
-        results = extract_json_from_text(text)
-        
-        # Handle case where LLM wrapped it in an object like {"results": [...]}
-        if isinstance(results, dict):
-            for k, v in results.items():
-                if isinstance(v, list):
-                    results = v
-                    break
-                    
-        if not isinstance(results, list):
-            # Try to force parsing just the array portion if we still don't have a list
-            match = re.search(r'\[.*\]', text, re.DOTALL)
-            if match:
-                results = extract_json_from_text(match.group(0))
-                
-        if not isinstance(results, list):
-            raise ValueError(f"LLM did not return a list. Returned type: {type(results)}")
-
-        # Validate and normalize
-        validated = []
-        for r in results[:max_results]:
-            validated.append({
-                "title": r.get("title", f"Result about {query}"),
-                "url": r.get("url", f"https://example.com/{query.replace(' ', '-')}"),
-                "snippet": r.get("snippet", ""),
-                "source_type": r.get("source_type", "web"),
-            })
-        logger.info(f"LLM fallback generated {len(validated)} results for '{query[:60]}'")
-        return validated
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                "https://en.wikipedia.org/w/api.php",
+                params={
+                    "action": "query",
+                    "list": "search",
+                    "srsearch": query,
+                    "srlimit": max_results,
+                    "format": "json",
+                    "srprop": "snippet",
+                },
+                headers={"User-Agent": "InfiChat-Research/1.0 (self-hosted research assistant)"},
+            )
+            resp.raise_for_status()
+            for item in resp.json().get("query", {}).get("search", []):
+                title = item.get("title", "")
+                snippet = re.sub(r"<[^>]+>", "", item.get("snippet", ""))
+                results.append({
+                    "title": title,
+                    "url": f"https://en.wikipedia.org/wiki/{title.replace(' ', '_')}",
+                    "snippet": snippet,
+                    "source_type": "wikipedia",
+                })
+        logger.info(f"Wikipedia found {len(results)} results for '{query[:60]}'")
     except Exception as e:
-        logger.error(f"LLM fallback search failed: {e}")
-        # Absolute last resort: return a single generic result
-        return [
-            {
-                "title": f"Research on {query}",
-                "url": f"https://en.wikipedia.org/wiki/{query.replace(' ', '_')}",
-                "snippet": f"Information about {query} from available sources.",
-                "source_type": "web",
-            }
-        ]
+        logger.warning(f"Wikipedia search failed for '{query[:60]}': {e}")
+
+    _cache_set(cache_key, {"results": results})
+    return results
+
+
+async def search_arxiv(query: str, max_results: int = 5) -> List[dict]:
+    """Search arXiv via its official Atom API. Real results only."""
+    import httpx
+    from xml.etree import ElementTree
+
+    cache_key = f"arxiv:{query}:{max_results}"
+    cached = _cache_get(cache_key)
+    if cached:
+        return cached["results"]
+
+    results: List[dict] = []
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.get(
+                "http://export.arxiv.org/api/query",
+                params={
+                    "search_query": f"all:{query}",
+                    "start": 0,
+                    "max_results": max_results,
+                    "sortBy": "relevance",
+                },
+            )
+            resp.raise_for_status()
+
+        ns = {"atom": "http://www.w3.org/2005/Atom"}
+        root = ElementTree.fromstring(resp.text)
+        for entry in root.findall("atom:entry", ns):
+            title_el = entry.find("atom:title", ns)
+            summary_el = entry.find("atom:summary", ns)
+            id_el = entry.find("atom:id", ns)
+            published_el = entry.find("atom:published", ns)
+            if id_el is None:
+                continue
+            results.append({
+                "title": (title_el.text or "").strip() if title_el is not None else "",
+                "url": (id_el.text or "").strip(),
+                "snippet": (summary_el.text or "").strip()[:500] if summary_el is not None else "",
+                "source_type": "academic",
+                "date": (published_el.text or "").strip() if published_el is not None else None,
+            })
+        logger.info(f"arXiv found {len(results)} results for '{query[:60]}'")
+    except Exception as e:
+        logger.warning(f"arXiv search failed for '{query[:60]}': {e}")
+
+    _cache_set(cache_key, {"results": results})
+    return results
+
+
+async def search_web(
+    query: str,
+    max_results: int = 10,
+    engines: str = "google,bing,duckduckgo,wikipedia,qwant",
+    time_range: str = "",
+) -> List[dict]:
+    """Cascading real-source search.
+
+    Tries providers in order of breadth and stops as soon as one returns
+    results: SearxNG -> DuckDuckGo -> Wikipedia -> arXiv.
+
+    IMPORTANT: this function never fabricates results. An empty list means
+    nothing was found, and callers must treat it as such. Synthesising
+    plausible-looking sources would put invented citations into research
+    reports, which is worse than returning nothing.
+    """
+    providers = (
+        ("searxng", lambda: search_searxng(query, max_results, engines, time_range)),
+        ("duckduckgo", lambda: search_duckduckgo(query, max_results)),
+        ("wikipedia", lambda: search_wikipedia(query, min(max_results, 5))),
+        ("arxiv", lambda: search_arxiv(query, min(max_results, 5))),
+    )
+
+    for name, provider in providers:
+        try:
+            results = await provider()
+        except Exception as e:
+            logger.warning(f"Search provider '{name}' errored for '{query[:60]}': {e}")
+            continue
+        if results:
+            if name != "searxng":
+                logger.info(f"Search fell back to '{name}' for '{query[:60]}'")
+            return results
+
+    logger.warning(f"No search provider returned results for '{query[:60]}'")
+    return []
 
 
 # ── Metadata extraction ──────────────────────────────────

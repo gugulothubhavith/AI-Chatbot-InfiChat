@@ -47,13 +47,21 @@ Evaluate these 6 quality checks and return JSON:
     {{"name": "recency", "passed": true/false, "detail": "explanation"}},
     {{"name": "depth", "passed": true/false, "detail": "explanation"}}
   ],
+  "branch_evaluations": [
+    {{
+      "title": "exact title of hypothesis/subtopic",
+      "status": "active" or "pruned" or "completed",
+      "score": 0.0-1.0
+    }}
+  ],
   "verdict": "COMPLETE" or "NEEDS_MORE",
   "feedback": "what additional research is needed if NEEDS_MORE",
   "overall_confidence": 0.0-1.0,
   "targeted_queries": ["if NEEDS_MORE, provide 3-5 specific search queries to resolve contradictions or missing info"]
 }}
 
-Be strict but fair. If 4+ checks pass AND there are no major unresolved contradictions, verdict should be COMPLETE.
+Be strict but fair. If a hypothesis branch (subtopic) yields bad data or is entirely refuted, mark its status as "pruned".
+If 4+ checks pass AND there are no major unresolved contradictions, verdict should be COMPLETE.
 Return ONLY valid JSON."""
 
 
@@ -72,8 +80,14 @@ async def run(state: ResearchState, llm_call) -> ResearchState:
 
     # Build fact summary
     fact_summary = ""
-    for f in facts[:8]:
+    for f in facts[:15]:
         fact_summary += f"- [{f.stance.value}] {f.claim} (confidence: {f.confidence})\n"
+
+    # Build active branches summary
+    branches_summary = ""
+    if state.plan:
+        for st in state.plan.subtopics:
+            branches_summary += f"- [Status: {st.status}] {st.title} (Priority: {st.priority})\n"
 
     prompt = CRITIC_PROMPT.format(
         topic=state.brief.topic if state.brief else state.query,
@@ -88,12 +102,14 @@ async def run(state: ResearchState, llm_call) -> ResearchState:
         aspects=", ".join(state.brief.key_aspects) if state.brief else state.query,
         fact_summary=fact_summary or "No facts extracted yet.",
     )
+    # Inject branches if present
+    if branches_summary:
+        prompt += f"\nActive Research Branches (Hypotheses):\n{branches_summary}"
 
     try:
         response = await llm_call([{"role": "user", "content": prompt}])
         text = response.strip()
         
-
         data = extract_json_from_text(text)
 
         checks = []
@@ -103,6 +119,18 @@ async def run(state: ResearchState, llm_call) -> ResearchState:
                 passed=check_data.get("passed", False),
                 detail=check_data.get("detail", ""),
             ))
+
+        # Parse Tree-of-Thought branch evaluations
+        branch_evals = data.get("branch_evaluations", [])
+        if state.plan and branch_evals:
+            for eval_data in branch_evals:
+                t = eval_data.get("title", "")
+                st = eval_data.get("status", "active")
+                sc = eval_data.get("score", 0.0)
+                for subtopic in state.plan.subtopics:
+                    if subtopic.title == t:
+                        subtopic.status = st
+                        subtopic.score = sc
 
         verdict_str = data.get("verdict", "NEEDS_MORE")
         try:

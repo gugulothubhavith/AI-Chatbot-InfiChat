@@ -45,6 +45,14 @@ async def run(state: ResearchState, llm_call, critic_feedback: str = "", targete
     topic = state.brief.topic if state.brief else state.query
     key_aspects = state.brief.key_aspects if state.brief else []
 
+    # Filter active branches (ToT Pruning)
+    active_branches = []
+    if state.plan:
+        active_branches = [st.title for st in state.plan.subtopics if st.status == "active"]
+    
+    if active_branches:
+        key_aspects.extend([f"FOCUS ON ACTIVE BRANCH: {b}" for b in active_branches])
+
     if critic_feedback:
         topic += f" (Focus on feedback: {critic_feedback})"
 

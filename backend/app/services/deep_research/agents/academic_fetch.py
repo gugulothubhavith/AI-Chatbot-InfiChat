@@ -1,25 +1,31 @@
-"""Agent 5: AcademicFetchAgent — Multi-source academic search via SearxNG.
+"""Agent 5: AcademicFetchAgent — Multi-source academic search.
 
 Approach:
-1. Try SearxNG first with academic engines (arxiv, scholar, pubmed, wikipedia)
-2. If SearxNG fails, use LLM to generate simulated academic sources
-3. Handle ALL errors gracefully
+1. Try SearxNG first with academic engines (arxiv, scholar, pubmed, wikipedia).
+2. If SearxNG returns nothing, fall back to the real arXiv Atom API and the
+   Wikipedia MediaWiki API — both return genuine sources.
+
+Sources are NEVER fabricated. If no provider returns anything, the agent adds
+nothing rather than inventing plausible-looking citations.
 """
 
-from app.core.json_utils import extract_json_from_text
-import asyncio
-import json
 import logging
-from typing import List, Optional
+from typing import List
 
 from app.services.deep_research.models import ResearchState, SourceDocument, SourceType
-from app.services.deep_research.utils.scraping import search_searxng, get_domain, compute_authority_score
+from app.services.deep_research.utils.scraping import (
+    search_searxng,
+    search_arxiv,
+    search_wikipedia,
+    get_domain,
+    compute_authority_score,
+)
 
 logger = logging.getLogger(__name__)
 
 
 async def run(state: ResearchState, llm_call=None) -> ResearchState:
-    """Fetch academic sources from SearxNG academic engines and LLM fallback."""
+    """Fetch academic sources from SearxNG, falling back to arXiv/Wikipedia APIs."""
     topic = state.brief.topic if state.brief else state.query
     key_aspects = state.brief.key_aspects if state.brief else []
 
@@ -73,15 +79,34 @@ async def run(state: ResearchState, llm_call=None) -> ResearchState:
                 logger.debug(f"SearxNG Academic aspect search failed for '{aspect[:40]}': {e}")
 
 
-    # ── Engine 2: LLM Fallback (if no results from APIs) ─
-    if not academic_sources and llm_call:
-        logger.info(f"No academic sources from APIs, using LLM fallback for '{topic[:60]}'")
-        try:
-            llm_results = await _search_academic_llm(topic, llm_call, max_results=5)
-            academic_sources.extend(llm_results)
-        except Exception as e:
-            errors.append(f"LLM_fallback: {e}")
-            logger.error(f"LLM academic fallback failed: {e}")
+    # ── Engine 2: Real arXiv + Wikipedia APIs (if SearxNG returned nothing) ─
+    if not academic_sources:
+        logger.info(f"No academic sources from SearxNG, trying arXiv/Wikipedia APIs for '{topic[:60]}'")
+        for provider_name, provider in (
+            ("arxiv", lambda: search_arxiv(topic, max_results=5)),
+            ("wikipedia", lambda: search_wikipedia(topic, max_results=5)),
+        ):
+            try:
+                results = await provider()
+            except Exception as e:
+                errors.append(f"{provider_name}: {e}")
+                logger.warning(f"Academic {provider_name} search failed: {e}")
+                continue
+            for r in results:
+                url = (r.get("url") or "").strip()
+                if not url or not url.startswith(("http://", "https://")):
+                    continue
+                academic_sources.append(SourceDocument(
+                    url=url,
+                    title=r.get("title", ""),
+                    snippet=(r.get("snippet") or "")[:500],
+                    source_type=SourceType.ACADEMIC if provider_name == "arxiv" else SourceType.WIKIPEDIA,
+                    authority_score=compute_authority_score(url),
+                    domain=get_domain(url),
+                    published_date=r.get("date"),
+                ))
+            if academic_sources:
+                break
 
     # ── Merge into state ────────────────────────────────
     for src in academic_sources:
