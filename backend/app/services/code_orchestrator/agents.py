@@ -1,8 +1,13 @@
-"""Multi-agent coding agents — each handles one phase of the coding pipeline."""
+"""Multi-agent coding agents — each handles one phase of the coding pipeline.
+
+All agent functions accept ``(state, llm_call)`` where ``llm_call`` is an
+``async (messages, stream=False)`` closure already bound to a pooled API key.
+"""
 
 import json
 import logging
-from typing import Callable
+import re
+from typing import Callable, Dict, List
 
 from app.services.code_orchestrator.models import (
     OrchestrationState, ArchitecturePlan, Specification,
@@ -41,14 +46,14 @@ Tech Stack: {tech_stack}
 
 Provide a specification in this JSON format:
 {{
-  "functional_requirements": ["req1", "req2", ...],
+  "functional_requirements": ["req1", "req2"],
   "api_endpoints": [
     {{"method": "GET/POST/PUT/DELETE", "path": "/api/endpoint", "description": "What it does", "request_body": "schema", "response": "schema"}}
   ],
   "data_models": [
-    {{"name": "ModelName", "fields": [{{"name": "field1", "type": "string", "description": "..."}}]}}
+    {{"name": "ModelName", "fields": [{{"name": "field1", "type": "string", "description": "description"}}]}}
   ],
-  "error_handling": ["strategy1", "strategy2", ...]
+  "error_handling": ["strategy1", "strategy2"]
 }}
 
 Be specific and production-ready. Return ONLY valid JSON, no markdown."""
@@ -80,7 +85,7 @@ CODER_SYSTEM_PROMPT = """You are CODE_AGENT — an elite production-grade progra
 
 Rules:
 - Output ONLY complete, executable code.
-- NO placeholders, NO pseudocode, NO "TODO" comments.
+- NO placeholders, NO pseudocode.
 - Use best practices: error handling, input validation, logging, type hints.
 - Every function must have a docstring.
 - Handle edge cases explicitly.
@@ -88,15 +93,33 @@ Rules:
 - Format: each file in a code block with the filename as the language tag.
 
 Example output format:
+
 ```python:src/main.py
 import os
+import logging
+
+logger = logging.getLogger(__name__)
+
 def main():
-    ...
+    \"\"\"Application entry point.\"\"\"
+    logger.info("Starting application")
+    return 0
+
+if __name__ == "__main__":
+    main()
 ```
 
 ```javascript:src/app.js
-function main() {
-    ...
+const express = require('express');
+const app = express();
+
+function start(port) {
+    app.listen(port, () => {
+        console.log(`Server running on port ${port}`);
+    });
+}
+
+module.exports = { start };
 ```
 """
 
@@ -111,6 +134,7 @@ Generate test files that:
 3. Include setup/teardown where needed
 4. Cover error cases and edge cases
 5. Mock external dependencies
+6. Mark any test you are unsure will pass with a comment "# may-fail: <reason>"
 
 Output format: each test file in a code block with the filename as the language tag.
 Example: ```python:test_main.py```"""
@@ -125,9 +149,9 @@ Test Output / Error:
 
 Fix ALL bugs and issues. Output the COMPLETE corrected file content.
 Maintain the same code style and conventions.
-Output the full file in a code block."""
+Output each file in a code block with the filename as the language tag, e.g. ```python:src/main.py```"""
 
-OPTIMIZER_PROMPT = """You are a code optimization and security expert. Review the following code and provide optimizations.
+OPTIMIZER_PROMPT = """You are a code optimization and security expert. Review the following code and suggest improvements.
 
 Files:
 {files}
@@ -139,11 +163,13 @@ Review for:
 4. Error handling completeness
 5. Memory/CPU efficiency
 
-For each file, provide the optimized version.
-Output each file in a code block with filename."""
+CRITICAL RULE: You MUST output the COMPLETE file content for each file you improve.
+Do NOT truncate or abbreviate any file. If a file is already good, output it unchanged.
+
+Output each file in a code block with the filename as the language tag."""
 
 
-# ── Agent Classes ─────────────────────────────────────────────
+# ── Agent Functions ───────────────────────────────────────────
 
 async def run_architect(state: OrchestrationState, llm_call: Callable) -> OrchestrationState:
     """Design system architecture from prompt."""
@@ -153,10 +179,7 @@ async def run_architect(state: OrchestrationState, llm_call: Callable) -> Orches
             {"role": "system", "content": "You are a senior software architect."},
             {"role": "user", "content": prompt},
         ])
-        text = response.strip()
-        if text.startswith("```"):
-            text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-
+        text = _strip_fences(response)
         data = json.loads(text)
         state.architecture = ArchitecturePlan(
             overview=data.get("overview", ""),
@@ -196,10 +219,7 @@ async def run_spec_writer(state: OrchestrationState, llm_call: Callable) -> Orch
             {"role": "system", "content": "You are a technical specification writer."},
             {"role": "user", "content": prompt},
         ])
-        text = response.strip()
-        if text.startswith("```"):
-            text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-
+        text = _strip_fences(response)
         data = json.loads(text)
         state.specification = Specification(
             functional_requirements=data.get("functional_requirements", []),
@@ -237,10 +257,7 @@ async def run_task_decomposer(state: OrchestrationState, llm_call: Callable) -> 
             {"role": "system", "content": "You are a task decomposition expert."},
             {"role": "user", "content": prompt},
         ])
-        text = response.strip()
-        if text.startswith("```"):
-            text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-
+        text = _strip_fences(response)
         data = json.loads(text)
         tasks_data = data.get("tasks", [])
         state.tasks = [
@@ -264,7 +281,8 @@ async def run_task_decomposer(state: OrchestrationState, llm_call: Callable) -> 
     return state
 
 
-async def run_coder(state: OrchestrationState, task: CodingTask, llm_call: Callable, chunk_callback: Callable = None) -> CodingTask:
+async def run_coder(state: OrchestrationState, task: CodingTask,
+                    llm_call: Callable, chunk_callback: Callable = None) -> CodingTask:
     """Generate code for a single task."""
     prompt = f"""Task: {task.title}
 
@@ -292,18 +310,22 @@ Output each file in a code block with the filename as a markdown language tag.""
                 {"role": "user", "content": prompt},
             ])
             text = response.strip()
-            
+
         files = _parse_code_blocks(text)
         if files:
-            task.output_files = [CodeFile(path=p, content=c, language=_detect_language(p)) for p, c in files.items()]
+            task.output_files = [
+                CodeFile(path=p, content=c, language=_detect_language(p))
+                for p, c in files.items()
+            ]
             task.status = "completed"
             logger.info(f"Coder: generated {len(files)} files for '{task.title[:50]}'")
         else:
             # Fallback: use entire response as a single file
+            fallback_path = task.output_files[0].path if task.output_files else "src/main.py"
             task.output_files = [CodeFile(
-                path=task.output_files[0].path if task.output_files else f"src/main.py",
+                path=fallback_path,
                 content=text,
-                language="python",
+                language=_detect_language(fallback_path),
             )]
             task.status = "completed"
     except Exception as e:
@@ -319,9 +341,11 @@ async def run_tester(state: OrchestrationState, llm_call: Callable) -> Orchestra
         logger.warning("No output files to test")
         return state
 
+    # Send full file contents — the tester needs to see the complete code
     files_text = "\n\n".join([
-        f"--- {f.path} ---\n{f.content[:2000]}"
+        f"--- {f.path} ---\n{f.content}"
         for f in state.output_files
+        if "test" not in f.path.lower()  # don't test the tests
     ])
 
     prompt = TESTER_PROMPT.format(files=files_text)
@@ -333,12 +357,17 @@ async def run_tester(state: OrchestrationState, llm_call: Callable) -> Orchestra
         text = response.strip()
         test_files = _parse_code_blocks(text)
         for path, content in test_files.items():
-            state.output_files.append(CodeFile(
-                path=path,
-                content=content,
-                language=_detect_language(path),
-                description="Test file",
-            ))
+            # Don't duplicate if the test file already exists from a prior pass
+            existing = [f for f in state.output_files if f.path == path]
+            if existing:
+                existing[0].content = content
+            else:
+                state.output_files.append(CodeFile(
+                    path=path,
+                    content=content,
+                    language=_detect_language(path),
+                    description="Test file",
+                ))
         logger.info(f"Tester: generated {len(test_files)} test files")
     except Exception as e:
         logger.warning(f"Tester LLM failed: {e}")
@@ -346,35 +375,56 @@ async def run_tester(state: OrchestrationState, llm_call: Callable) -> Orchestra
 
 
 async def run_debugger(state: OrchestrationState, error_info: str, llm_call: Callable) -> OrchestrationState:
-    """Fix bugs in generated code."""
+    """Fix bugs in generated code based on error feedback."""
     if not state.output_files:
         return state
 
-    for f in state.output_files:
-        prompt = DEBUGGER_PROMPT.format(code=f.content[:3000], error=error_info[:1000])
-        try:
-            response = await llm_call([
-                {"role": "system", "content": CODER_SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ])
-            text = response.strip()
-            fixed_files = _parse_code_blocks(text)
-            if fixed_files and f.path in fixed_files:
-                f.content = fixed_files[f.path]
-                logger.info(f"Debugger: fixed {f.path}")
-        except Exception as e:
-            logger.warning(f"Debugger failed for {f.path}: {e}")
+    # Collect non-test files to fix
+    code_files = [f for f in state.output_files if "test" not in f.path.lower()]
+    if not code_files:
+        return state
+
+    # Send all code files in one prompt for context-aware fixing
+    code_text = "\n\n".join([
+        f"--- {f.path} ---\n{f.content}" for f in code_files
+    ])
+
+    prompt = DEBUGGER_PROMPT.format(code=code_text, error=error_info[:2000])
+    try:
+        response = await llm_call([
+            {"role": "system", "content": CODER_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ])
+        text = response.strip()
+        fixed_files = _parse_code_blocks(text)
+        fixed_count = 0
+        for path, content in fixed_files.items():
+            for f in state.output_files:
+                if f.path == path:
+                    f.content = content
+                    fixed_count += 1
+                    break
+        logger.info(f"Debugger: fixed {fixed_count} file(s)")
+    except Exception as e:
+        logger.warning(f"Debugger failed: {e}")
 
     return state
 
 
 async def run_optimizer(state: OrchestrationState, llm_call: Callable) -> OrchestrationState:
-    """Review and optimize all output files."""
+    """Review and optimize all output files.
+
+    IMPORTANT: Unlike the old version, we send complete file contents and only
+    replace a file if the LLM returns a version that is at least 80% the
+    length of the original. This prevents the optimizer from accidentally
+    truncating files it could only partially see.
+    """
     if not state.output_files:
         return state
 
+    # Send full file contents (not truncated)
     files_text = "\n\n".join([
-        f"--- {f.path} ---\n{f.content[:3000]}"
+        f"--- {f.path} ---\n{f.content}"
         for f in state.output_files
     ])
 
@@ -386,12 +436,24 @@ async def run_optimizer(state: OrchestrationState, llm_call: Callable) -> Orches
         ])
         text = response.strip()
         optimized_files = _parse_code_blocks(text)
+        replaced = 0
         for path, content in optimized_files.items():
             for f in state.output_files:
                 if f.path == path:
+                    original_len = len(f.content)
+                    new_len = len(content)
+                    # Safety check: don't replace if the optimized version is
+                    # suspiciously shorter (the LLM may have truncated it).
+                    if original_len > 0 and new_len < original_len * 0.8:
+                        logger.warning(
+                            f"Optimizer returned truncated content for {path} "
+                            f"({new_len} vs {original_len} chars); keeping original"
+                        )
+                        continue
                     f.content = content
+                    replaced += 1
                     break
-        logger.info(f"Optimizer: reviewed {len(optimized_files)} files")
+        logger.info(f"Optimizer: reviewed {len(optimized_files)} files, replaced {replaced}")
     except Exception as e:
         logger.warning(f"Optimizer LLM failed: {e}")
     return state
@@ -399,28 +461,35 @@ async def run_optimizer(state: OrchestrationState, llm_call: Callable) -> Orches
 
 # ── Utility Functions ─────────────────────────────────────────
 
-def _parse_code_blocks(text: str) -> dict:
+def _strip_fences(text: str) -> str:
+    """Strip markdown code fences from a JSON response."""
+    text = (text or "").strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+    return text
+
+
+def _parse_code_blocks(text: str) -> Dict[str, str]:
     """Parse code blocks from LLM response into {filename: content} dict."""
-    import re
-    files = {}
+    files: Dict[str, str] = {}
     # Match ```[language][separator][filename]\n[content]```
     pattern = re.compile(r"```[ \t]*([a-zA-Z0-9_+\-]+)?[ \t]*:?[ \t]*([^\n]+)?\n(.*?)\n```", re.DOTALL)
     for match in pattern.finditer(text):
         lang = (match.group(1) or "").strip()
         filename = (match.group(2) or "").strip()
         content = match.group(3).strip()
-        
+
         # Sometimes LLMs put the filename on the first line as a comment
         if not filename and content:
             first_line = content.split('\n')[0].strip()
             if first_line.startswith('// filepath:') or first_line.startswith('# filepath:'):
                 filename = first_line.split(':', 1)[1].strip()
-        
+
         if filename:
             files[filename] = content
         elif lang:
             files[f"main.{lang}"] = content
-            
+
     # If no code blocks found, try fallback regex
     if not files:
         pattern_fallback = re.compile(r"```[^\n]*\n(.*?)```", re.DOTALL)
