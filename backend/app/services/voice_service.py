@@ -2,13 +2,14 @@ import os
 import logging
 import time
 import asyncio
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 # Fallback Local Whisper Config
-MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "base") 
+MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "base")
 DEVICE = "cpu"
 COMPUTE_TYPE = "int8"
 
@@ -16,16 +17,31 @@ _model_instance = None
 _kokoro_model = None
 _executor = ThreadPoolExecutor(max_workers=2)
 
+# Guards for lazy singleton init. Without these, two parallel requests can both
+# see the model as None and each load a full copy — doubling memory and load
+# time on the first concurrent hit.
+_model_lock = threading.Lock()
+_kokoro_lock = threading.Lock()
+
+# faster-whisper's WhisperModel is not safe to run concurrent transcriptions on
+# from multiple threads. We run transcription in worker threads (asyncio.to_thread),
+# so serialize the actual inference call. On CPU int8 there is no throughput lost
+# by serializing — parallel CPU inference on one model only thrashes the cache.
+_inference_lock = threading.Lock()
+
 def get_local_model():
     global _model_instance
     if _model_instance is None:
-        from faster_whisper import WhisperModel
-        logger.info(f"Loading local Whisper model: {MODEL_SIZE} on {DEVICE}...")
-        try:
-            _model_instance = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
-        except Exception as e:
-            logger.error(f"Failed to load local Whisper model: {e}")
-            raise e
+        with _model_lock:
+            # Double-checked: another thread may have loaded it while we waited.
+            if _model_instance is None:
+                from faster_whisper import WhisperModel
+                logger.info(f"Loading local Whisper model: {MODEL_SIZE} on {DEVICE}...")
+                try:
+                    _model_instance = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
+                except Exception as e:
+                    logger.error(f"Failed to load local Whisper model: {e}")
+                    raise e
     return _model_instance
 
 
@@ -59,34 +75,37 @@ def _find_models():
 def get_kokoro_model():
     global _kokoro_model
     if _kokoro_model is None:
-        from kokoro_onnx import Kokoro
-        logger.info("Loading local Kokoro TTS model (ONNX)...")
-        onnx_path, voices_path = _find_models()
-        
-        if not onnx_path or not os.path.exists(onnx_path):
-             logger.warning(f"Kokoro ONNX file not found at {onnx_path or 'anywhere'}! Returning None.")
-             return None
-        
-        logger.info(f"Loading Kokoro from {onnx_path}")
-        _kokoro_model = Kokoro(onnx_path, voices_path)
-        
-        # Warm-up inference to initialize ORT sessions and cache
-        try:
-            logger.info("Warming up Kokoro model...")
-            # create_stream in 0.5.0 is an async generator
-            async def _warmup():
-                async for _ in _kokoro_model.create_stream("Hi", voice="af_sky", speed=1.0, lang="en-us"):
-                    break
-            
+        with _kokoro_lock:
+            if _kokoro_model is not None:
+                return _kokoro_model
+            from kokoro_onnx import Kokoro
+            logger.info("Loading local Kokoro TTS model (ONNX)...")
+            onnx_path, voices_path = _find_models()
+
+            if not onnx_path or not os.path.exists(onnx_path):
+                 logger.warning(f"Kokoro ONNX file not found at {onnx_path or 'anywhere'}! Returning None.")
+                 return None
+
+            logger.info(f"Loading Kokoro from {onnx_path}")
+            _kokoro_model = Kokoro(onnx_path, voices_path)
+
+            # Warm-up inference to initialize ORT sessions and cache
             try:
-                loop = asyncio.get_running_loop()
-                asyncio.create_task(_warmup())
-            except RuntimeError:
-                # No loop running in this thread, or it's not the main thread
-                pass
-        except Exception as e:
-            logger.warning(f"Warmup failed (non-critical): {e}")
-            
+                logger.info("Warming up Kokoro model...")
+                # create_stream in 0.5.0 is an async generator
+                async def _warmup():
+                    async for _ in _kokoro_model.create_stream("Hi", voice="af_sky", speed=1.0, lang="en-us"):
+                        break
+
+                try:
+                    loop = asyncio.get_running_loop()
+                    asyncio.create_task(_warmup())
+                except RuntimeError:
+                    # No loop running in this thread, or it's not the main thread
+                    pass
+            except Exception as e:
+                logger.warning(f"Warmup failed (non-critical): {e}")
+
     return _kokoro_model
 
 def preload_models():
@@ -112,14 +131,17 @@ async def transcribe_audio(file_path: str, language: str | None = None) -> str:
             f"Transcribing {file_path} locally with {MODEL_SIZE} "
             f"(language={language or 'auto'})..."
         )
-        segments, _info = model.transcribe(
-            file_path,
-            beam_size=1,
-            language=language,
-            vad_filter=True,
-            vad_parameters=dict(min_silence_duration_ms=500),
-        )
-        return " ".join(s.text for s in segments).strip()
+        # Serialize inference — one WhisperModel instance is not safe for
+        # concurrent decode calls from parallel request threads.
+        with _inference_lock:
+            segments, _info = model.transcribe(
+                file_path,
+                beam_size=1,
+                language=language,
+                vad_filter=True,
+                vad_parameters=dict(min_silence_duration_ms=500),
+            )
+            return " ".join(s.text for s in segments).strip()
 
     try:
         return await asyncio.to_thread(_transcribe_sync)

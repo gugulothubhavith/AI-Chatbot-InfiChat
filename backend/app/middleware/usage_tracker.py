@@ -201,7 +201,14 @@ class UsageTrackingMiddleware(BaseHTTPMiddleware):
                     },
                 )
 
-            # Process the request exactly once.
+            # Process the request exactly once. Metering has already been checked
+            # and the entitlement decision made — the DB session must be returned
+            # to the pool NOW (not after call_next) so that an SSE stream or any
+            # long-running request doesn't pin a connection for the whole stream
+            # and starve parallel users.
+            db.close()
+            db = None  # prevent the outer finally from double-closing
+
             start_time = time.time()
             response = await call_next(request)
             elapsed = time.time() - start_time
@@ -211,18 +218,26 @@ class UsageTrackingMiddleware(BaseHTTPMiddleware):
             response.headers["X-Usage-Remaining"] = str(max(0, remaining - 1))
             response.headers["X-Usage-Limit"] = str(limit)
 
-            # Record usage for successful responses. A recording failure must
+            # Record usage for successful responses on a brand-new session so
+            # the pool connection budget is returned to the rest of the app the
+            # moment the response starts streaming. A recording failure must
             # not fail the already-served request, so it is logged and
             # swallowed here (and only here).
             if 200 <= response.status_code < 400:
                 try:
-                    record_usage(user_id, feature, db=db)
+                    from app.database.db import SessionLocal
+                    rec_db = SessionLocal()
+                    try:
+                        record_usage(user_id, feature, db=rec_db)
+                    finally:
+                        rec_db.close()
                 except Exception as e:
                     logger.error(f"Usage recording failed: {e}")
 
             return response
         finally:
-            try:
-                db.close()
-            except Exception:
-                pass
+            if db is not None:
+                try:
+                    db.close()
+                except Exception:
+                    pass

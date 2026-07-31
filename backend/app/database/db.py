@@ -62,10 +62,30 @@ _effective_url = _resolve_db_url()
 
 # ── Engine ────────────────────────────────────────────────────
 _connect_args = {}
+_engine_kwargs = {}
 if "sqlite" in _effective_url:
     _connect_args["check_same_thread"] = False
+else:
+    # Postgres (production): the default pool is 5 connections + 10 overflow,
+    # which collapses under parallel users each holding a session for the life
+    # of their request plus background SSE tasks. Size it for real concurrency
+    # and recycle/ping so stale connections don't surface as errors.
+    #   pool_size        — persistent connections kept open
+    #   max_overflow     — extra bursts allowed above pool_size
+    #   pool_pre_ping    — validate a connection before handing it out
+    #   pool_recycle     — drop connections older than 30 min (avoids server-side
+    #                      idle timeouts silently killing them)
+    #   pool_timeout     — fail fast (don't hang a request forever) when the pool
+    #                      is exhausted, so overload surfaces as a 500 not a stall
+    _engine_kwargs.update(
+        pool_size=int(os.getenv("DB_POOL_SIZE", "20")),
+        max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "40")),
+        pool_pre_ping=True,
+        pool_recycle=1800,
+        pool_timeout=int(os.getenv("DB_POOL_TIMEOUT", "30")),
+    )
 
-engine = create_engine(_effective_url, connect_args=_connect_args)
+engine = create_engine(_effective_url, connect_args=_connect_args, **_engine_kwargs)
 
 # ── Enable WAL mode + foreign keys for SQLite ─────────────────
 @event.listens_for(engine, "connect")
