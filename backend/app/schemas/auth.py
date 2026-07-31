@@ -13,6 +13,7 @@ class AuthResponse(BaseModel):
     refresh_token: Optional[str] = None
     token_type: str
     user_id: str
+    name: str
     email: str
     avatar_url: Optional[str] = None
     is_new_user: bool
