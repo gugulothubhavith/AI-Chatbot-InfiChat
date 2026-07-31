@@ -29,12 +29,20 @@ async def google_login(payload: GoogleLoginRequest):
                     raise ValueError("Invalid Google access token")
                 token_info = token_info_resp.json()
                 
+                # The audience check must fail closed. A token that names a
+                # different client — or one whose aud/azp tokeninfo omits — is
+                # not ours, and accepting it would let any Google app's token
+                # log a user in here.
+                if not settings.GOOGLE_CLIENT_ID:
+                    raise ValueError("GOOGLE_CLIENT_ID is not configured")
+
                 azp = token_info.get("azp")
                 aud = token_info.get("aud")
                 if settings.GOOGLE_CLIENT_ID not in (azp, aud):
-                    if aud or azp:
-                        logger.warning(f"Google token aud/azp mismatch. Expected {settings.GOOGLE_CLIENT_ID}, got aud={aud}, azp={azp}")
-                        raise ValueError(f"Token was not issued to this client")
+                    logger.warning(
+                        "Google token aud/azp mismatch: got aud=%r azp=%r", aud, azp
+                    )
+                    raise ValueError("Token was not issued to this client")
                 
                 # 2. Get user info
                 user_info_resp = await client.get(
@@ -54,7 +62,9 @@ async def google_login(payload: GoogleLoginRequest):
             )
         
         # Extract user info
-        logger.info(f"GOOGLE IDINFO: {idinfo}")
+        # Don't log the whole profile — it carries email, name and photo URL
+        # into the log file on every single sign-in.
+        logger.debug("Google profile verified (sub=%s)", idinfo.get("sub"))
         email = idinfo.get("email")
         
         # Robustly extract the user's first and last name from Google profile
