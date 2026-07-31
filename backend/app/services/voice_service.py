@@ -13,9 +13,18 @@ MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "base")
 DEVICE = "cpu"
 COMPUTE_TYPE = "int8"
 
+_CPU_COUNT = os.cpu_count() or 2
+
+# CTranslate2 (faster-whisper's backend) parallelises a single transcription
+# across `cpu_threads`, and serves concurrent transcribe() calls from separate
+# Python threads across `num_workers`. Splitting the cores between the two is
+# what lets several users transcribe at once instead of queueing: with
+# num_workers=1 every request past the first waits for the one in flight.
+WHISPER_NUM_WORKERS = max(1, int(os.getenv("WHISPER_NUM_WORKERS", str(min(4, _CPU_COUNT)))))
+WHISPER_CPU_THREADS = max(1, int(os.getenv("WHISPER_CPU_THREADS", str(max(1, _CPU_COUNT // WHISPER_NUM_WORKERS)))))
+
 _model_instance = None
 _kokoro_model = None
-_executor = ThreadPoolExecutor(max_workers=2)
 
 # Guards for lazy singleton init. Without these, two parallel requests can both
 # see the model as None and each load a full copy — doubling memory and load
@@ -23,11 +32,13 @@ _executor = ThreadPoolExecutor(max_workers=2)
 _model_lock = threading.Lock()
 _kokoro_lock = threading.Lock()
 
-# faster-whisper's WhisperModel is not safe to run concurrent transcriptions on
-# from multiple threads. We run transcription in worker threads (asyncio.to_thread),
-# so serialize the actual inference call. On CPU int8 there is no throughput lost
-# by serializing — parallel CPU inference on one model only thrashes the cache.
-_inference_lock = threading.Lock()
+# Transcription runs on its own thread pool rather than asyncio's shared
+# default executor. Sized to num_workers, it bounds concurrent decodes to what
+# CTranslate2 was built to serve, and keeps a burst of transcriptions from
+# occupying every thread in the default pool that the rest of the app uses.
+_transcribe_pool = ThreadPoolExecutor(
+    max_workers=WHISPER_NUM_WORKERS, thread_name_prefix="whisper"
+)
 
 def get_local_model():
     global _model_instance
@@ -36,9 +47,19 @@ def get_local_model():
             # Double-checked: another thread may have loaded it while we waited.
             if _model_instance is None:
                 from faster_whisper import WhisperModel
-                logger.info(f"Loading local Whisper model: {MODEL_SIZE} on {DEVICE}...")
+                logger.info(
+                    "Loading local Whisper model: %s on %s "
+                    "(num_workers=%d, cpu_threads=%d)...",
+                    MODEL_SIZE, DEVICE, WHISPER_NUM_WORKERS, WHISPER_CPU_THREADS,
+                )
                 try:
-                    _model_instance = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
+                    _model_instance = WhisperModel(
+                        MODEL_SIZE,
+                        device=DEVICE,
+                        compute_type=COMPUTE_TYPE,
+                        num_workers=WHISPER_NUM_WORKERS,
+                        cpu_threads=WHISPER_CPU_THREADS,
+                    )
                 except Exception as e:
                     logger.error(f"Failed to load local Whisper model: {e}")
                     raise e
@@ -131,20 +152,20 @@ async def transcribe_audio(file_path: str, language: str | None = None) -> str:
             f"Transcribing {file_path} locally with {MODEL_SIZE} "
             f"(language={language or 'auto'})..."
         )
-        # Serialize inference — one WhisperModel instance is not safe for
-        # concurrent decode calls from parallel request threads.
-        with _inference_lock:
-            segments, _info = model.transcribe(
-                file_path,
-                beam_size=1,
-                language=language,
-                vad_filter=True,
-                vad_parameters=dict(min_silence_duration_ms=500),
-            )
-            return " ".join(s.text for s in segments).strip()
+        # CTranslate2 admits num_workers concurrent decodes; the pool this runs
+        # on is sized to match, so no extra locking is needed here.
+        segments, _info = model.transcribe(
+            file_path,
+            beam_size=1,
+            language=language,
+            vad_filter=True,
+            vad_parameters=dict(min_silence_duration_ms=500),
+        )
+        return " ".join(s.text for s in segments).strip()
 
     try:
-        return await asyncio.to_thread(_transcribe_sync)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(_transcribe_pool, _transcribe_sync)
     except Exception as e:
         logger.error(f"Local transcription failed: {e}")
         return "[Error: Voice Transcription failed]"
