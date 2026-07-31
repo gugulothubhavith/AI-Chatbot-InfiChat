@@ -6,6 +6,7 @@ from app.services.rag_service import query_rag
 from app.services.memory_service import get_relevant_memories, extract_and_store_memories
 from fastapi import BackgroundTasks
 from sqlalchemy.orm import Session
+import asyncio
 import logging
 import json
 from datetime import datetime, timezone
@@ -27,7 +28,19 @@ async def generate_title(content: str) -> str:
     except Exception:
         return content[:50] + "..."
 
-async def process_chat(payload: ChatRequest, user: User, db: Session, background_tasks: BackgroundTasks = None, stream: bool = False):
+async def process_chat(payload: ChatRequest, user: User, background_tasks: BackgroundTasks = None, stream: bool = False):
+    """Run one chat turn, streaming or not.
+
+    Takes no ``db``: every database touch here runs in a worker thread on its
+    own short-lived Session. Two reasons. A Session is not safe to share across
+    threads, and on the streaming path this coroutine's work outlives the
+    request handler — holding a request-scoped connection for the length of a
+    model response starves the pool (20 + 40 overflow) after a handful of
+    concurrent chats.
+
+    ``user`` is still a live ORM instance, so the attributes needed are copied
+    into plain locals before the first commit; see below.
+    """
     logger.info(f"Process Chat Start: user={user.email}, session={payload.conversation_id}, model={payload.model}")
     from app.services.privacy_service import scrub_text
     
@@ -37,46 +50,93 @@ async def process_chat(payload: ChatRequest, user: User, db: Session, background
         last_msg.content = scrub_text(last_msg.content)
 
     session_id = payload.conversation_id
-    
-    # 1. Ensure Session exists
-    if not session_id:
-        # Create new session if none provided
-        session = ChatSession(user_id=user.id, workspace=payload.workspace or "personal")
-        db.add(session)
-        db.commit()
-        db.refresh(session)
-        session_id = session.id
-    else:
-        logger.info(f"Looking up session: session_id={session_id} (type={type(session_id)}), user_id={user.id} (type={type(user.id)})")
-        session = db.query(ChatSession).filter(ChatSession.id == session_id, ChatSession.user_id == user.id).first()
-        if not session:
-            # Check if it exists AT ALL in the DB to distinguish between 'not found' and 'unauthorized'
-            exists = db.query(ChatSession).filter(ChatSession.id == session_id).first()
-            if exists:
-                logger.error(f"UNAUTHORIZED ACCESS ATTEMPT: User {user.id} tried to access session {session_id} owned by {exists.user_id}")
-                raise ValueError("Unauthorized: You do not own this session")
-            else:
-                logger.warning(f"Session {session_id} not found in database for user {user.id}")
+    last_msg = payload.messages[-1]
+
+    # Read the ORM attributes we need *before* any commit. The request-scoped
+    # ``db`` uses expire_on_commit=True, so touching user.settings after a commit
+    # would emit a lazy-load SELECT — on the event loop, in the middle of a
+    # stream. Plain values are also what's safe to hand to a worker thread.
+    user_id = user.id
+    user_settings = user.settings or {}
+
+    # 1. Ensure the session exists, and learn whether this turn needs a title.
+    #
+    # Every DB touch below runs in a worker thread with its own Session. Two
+    # reasons it does not reuse ``db``: a Session is not safe to share across
+    # threads, and the streaming path lives for as long as the model talks — a
+    # request-scoped connection held open that whole time starves the pool
+    # (20 + 40 overflow) under a handful of concurrent chats.
+    def _ensure_session(session_id_arg, workspace):
+        from app.database.db import SessionLocal
+        thread_db = SessionLocal()
+        try:
+            if not session_id_arg:
+                session = ChatSession(user_id=user_id, workspace=workspace or "personal")
+                thread_db.add(session)
+                thread_db.commit()
+                thread_db.refresh(session)
+                # Brand-new session: no messages yet, so this turn titles it.
+                return session.id, True
+
+            session = thread_db.query(ChatSession).filter(
+                ChatSession.id == session_id_arg,
+                ChatSession.user_id == user_id,
+            ).first()
+            if not session:
+                # Distinguish 'not found' from 'not yours' for the log only; both
+                # surface to the caller as a ValueError so neither leaks the
+                # existence of another user's session.
+                exists = thread_db.query(ChatSession).filter(
+                    ChatSession.id == session_id_arg
+                ).first()
+                if exists:
+                    logger.error(
+                        "UNAUTHORIZED ACCESS ATTEMPT: User %s tried to access session %s owned by %s",
+                        user_id, session_id_arg, exists.user_id,
+                    )
+                    raise ValueError("Unauthorized: You do not own this session")
+                logger.warning("Session %s not found in database for user %s", session_id_arg, user_id)
                 raise ValueError("Session not found")
 
-    # 2. Save User Message
-    last_msg = payload.messages[-1]
-    db_user_msg = ChatMessage(
-        session_id=session_id, 
-        role="user", 
-        content=last_msg.content, 
-        image_url=last_msg.image,
-        file_name=last_msg.file_name,
-        file_type=last_msg.file_type
+            # Counted before the user message is inserted, matching the original
+            # ordering (autoflush=False meant the pending add never counted).
+            message_count = thread_db.query(ChatMessage).filter(
+                ChatMessage.session_id == session_id_arg
+            ).count()
+            return session_id_arg, message_count <= 1
+        finally:
+            thread_db.close()
+
+    session_id, needs_title = await asyncio.to_thread(
+        _ensure_session, session_id, payload.workspace
     )
-    db.add(db_user_msg)
-    
-    # 3. Auto-Title if needed
-    message_count = db.query(ChatMessage).filter(ChatMessage.session_id == session_id).count()
-    if message_count <= 1:
-        session.title = await generate_title(last_msg.content)
-    
-    db.commit()
+
+    # 2. Title generation is an LLM call, so it belongs on the loop, not in the
+    # thread that writes it.
+    title = await generate_title(last_msg.content) if needs_title else None
+
+    # 3. Persist the user message (and the title, in the same transaction).
+    def _save_user_message(title_arg):
+        from app.database.db import SessionLocal
+        thread_db = SessionLocal()
+        try:
+            thread_db.add(ChatMessage(
+                session_id=session_id,
+                role="user",
+                content=last_msg.content,
+                image_url=last_msg.image,
+                file_name=last_msg.file_name,
+                file_type=last_msg.file_type,
+            ))
+            if title_arg is not None:
+                thread_db.query(ChatSession).filter(
+                    ChatSession.id == session_id
+                ).update({"title": title_arg}, synchronize_session=False)
+            thread_db.commit()
+        finally:
+            thread_db.close()
+
+    await asyncio.to_thread(_save_user_message, title)
 
     # --- REDIS SESSION TRACKING (Sync user message) ---
     try:
@@ -89,10 +149,30 @@ async def process_chat(payload: ChatRequest, user: User, db: Session, background
 
     # (Web search feature removed)
 
-    # 5. Build full context for LLM (Redis first, DB fallback)
-    messages = []
+    # 4. Build full context for LLM (Redis first, DB fallback)
     redis_key = f"session:history:{session_id}"
-    
+
+    def _load_history():
+        """Newest-first query, reversed to chronological, as plain dicts.
+
+        Returns dicts rather than ORM instances deliberately: the objects would
+        be bound to a Session this thread is about to close, so any attribute
+        read on the loop afterwards would raise DetachedInstanceError.
+        """
+        from app.database.db import SessionLocal
+        thread_db = SessionLocal()
+        try:
+            history_query = thread_db.query(ChatMessage).filter(
+                ChatMessage.session_id == session_id
+            ).order_by(ChatMessage.created_at.desc())
+            if payload.history_limit:
+                history_query = history_query.limit(payload.history_limit)
+            history = history_query.all()
+            history.reverse()
+            return [{"role": h.role, "content": h.content} for h in history]
+        finally:
+            thread_db.close()
+
     try:
         cached_history = redis_client.lrange(redis_key, 0, -1)
         if cached_history:
@@ -100,31 +180,18 @@ async def process_chat(payload: ChatRequest, user: User, db: Session, background
             messages = [json.loads(m) for m in cached_history]
         else:
             logger.info(f"Chat Session Cache Miss: {redis_key}")
-            # Load from DB
-            history_query = db.query(ChatMessage).filter(ChatMessage.session_id == session_id).order_by(ChatMessage.created_at.desc())
-            if payload.history_limit:
-                history_query = history_query.limit(payload.history_limit)
-            
-            history = history_query.all()
-            history.reverse()
-            
-            for h in history:
-                messages.append({"role": h.role, "content": h.content})
-            
+            messages = await asyncio.to_thread(_load_history)
+
             # Populate Redis for next time
             if messages:
                 redis_client.delete(redis_key)
                 redis_client.rpush(redis_key, *[json.dumps(m) for m in messages])
                 redis_client.expire(redis_key, SESSION_TTL)
     except Exception as e:
+        # Covers both a Redis outage and a malformed cache entry. The DB is the
+        # source of truth, so fall back to it rather than failing the turn.
         logger.warning(f"Fast session tracking failed: {e}. Falling back to standard DB retrieval.")
-        # Re-run standard DB retrieval if Redis completely fails
-        history_query = db.query(ChatMessage).filter(ChatMessage.session_id == session_id).order_by(ChatMessage.created_at.desc())
-        if payload.history_limit:
-            history_query = history_query.limit(payload.history_limit)
-        history = history_query.all()
-        history.reverse()
-        messages = [{"role": h.role, "content": h.content} for h in history]
+        messages = await asyncio.to_thread(_load_history)
     
     # 6. RAG Integration (Attachment-Driven)
     try:
@@ -133,7 +200,8 @@ async def process_chat(payload: ChatRequest, user: User, db: Session, background
         if attached_file:
             query = last_msg.content or "What is this document about?"
             logger.info(f"Querying RAG for turn-attached file: {attached_file}")
-            context = query_rag(query, filename_filter=attached_file)
+            # Vector search plus an embedding call — both blocking, both off-loop.
+            context = await asyncio.to_thread(query_rag, query, filename_filter=attached_file)
             if context and messages:
                 rag_instructions = (
                     "You are an AI assistant with access to a knowledge base. "
@@ -181,14 +249,14 @@ async def process_chat(payload: ChatRequest, user: User, db: Session, background
         try:
             intent = await should_auto_search(last_msg.content)
             if intent.should_search:
-                if not within_auto_search_cap(str(user.id)):
+                if not within_auto_search_cap(str(user_id)):
                     logger.info(
-                        "Auto-search suppressed: user %s over daily cap", user.id
+                        "Auto-search suppressed: user %s over daily cap", user_id
                     )
                 else:
                     logger.info(
                         "Auto-Triggering Web Search (reason=%s) for user %s",
-                        intent.reason, user.id,
+                        intent.reason, user_id,
                     )
                     from app.services.web_search.orchestrator import run_web_search
 
@@ -218,7 +286,7 @@ async def process_chat(payload: ChatRequest, user: User, db: Session, background
                             search_report = report_content
 
                     if search_report:
-                        record_auto_search(str(user.id))
+                        record_auto_search(str(user_id))
                         auto_searched = True
                         system_messages.append(
                             "Web Search Results (Real-time data):\n"
@@ -235,8 +303,7 @@ async def process_chat(payload: ChatRequest, user: User, db: Session, background
     if payload.system_prompt:
         system_messages.append(f"Custom Instruction:\n{payload.system_prompt}")
 
-    # User Personalization from Settings
-    user_settings = user.settings or {}
+    # User Personalization from Settings (hoisted above, pre-commit)
     personal_info = []
     if user_settings.get("nickname"):
         personal_info.append(f"The user's nickname is: {user_settings.get('nickname')}")
@@ -251,7 +318,7 @@ async def process_chat(payload: ChatRequest, user: User, db: Session, background
         system_messages.append("User Personalization:\n" + "\n".join(personal_info))
 
     try:
-        memories = get_relevant_memories(user.id)
+        memories = await asyncio.to_thread(get_relevant_memories, user_id)
         if memories:
             system_messages.append(f"System Memory (Authoritative):\n{memories}")
     except Exception as e:
@@ -310,14 +377,27 @@ async def process_chat(payload: ChatRequest, user: User, db: Session, background
                 async for chunk in generator:
                      full_content += chunk
                      yield chunk
-                
-                # Once stream ends, save to DB
-                db_assistant_msg = ChatMessage(session_id=session_id, role="assistant", content=full_content)
-                db.add(db_assistant_msg)
-                db.commit()
+
+                # Once stream ends, save to DB — offload to worker thread so the
+                # commit doesn't block the loop while the client drains the queue.
+                def _save_assistant_message(content):
+                    from app.database.db import SessionLocal
+                    thread_db = SessionLocal()
+                    try:
+                        thread_db.add(ChatMessage(
+                            session_id=session_id,
+                            role="assistant",
+                            content=content,
+                        ))
+                        thread_db.commit()
+                    finally:
+                        thread_db.close()
+
+                await asyncio.to_thread(_save_assistant_message, full_content)
+
                 if background_tasks:
-                     background_tasks.add_task(extract_and_store_memories, user.id, last_msg.content, full_content)
-                
+                     background_tasks.add_task(extract_and_store_memories, user_id, last_msg.content, full_content)
+
                 # Save Assistant Message to Redis
                 try:
                     redis_key = f"session:history:{session_id}"
@@ -330,20 +410,31 @@ async def process_chat(payload: ChatRequest, user: User, db: Session, background
                 error_trace = traceback.format_exc()
                 logger.error(f"Stream Wrapper Critical Failure: {e}\n{error_trace}")
                 yield f"\n\n❌ **[System Error]**: {str(e)}"
-                
+
         return stream_wrapper(), session_id
 
     # Non-streaming
     response_data = await call_llm("chat", llm_payload, key_group=key_group)
     content = response_data.get('choices', [])[0].get('message', {}).get('content', "No content")
-    
-    # Save Assistant Message
-    db_assistant_msg = ChatMessage(session_id=session_id, role="assistant", content=content)
-    db.add(db_assistant_msg)
-    db.commit()
+
+    # Save Assistant Message — off-loop, same as the streaming path.
+    def _save_assistant_message(assistant_content):
+        from app.database.db import SessionLocal
+        thread_db = SessionLocal()
+        try:
+            thread_db.add(ChatMessage(
+                session_id=session_id,
+                role="assistant",
+                content=assistant_content,
+            ))
+            thread_db.commit()
+        finally:
+            thread_db.close()
+
+    await asyncio.to_thread(_save_assistant_message, content)
 
     if background_tasks:
-         background_tasks.add_task(extract_and_store_memories, user.id, last_msg.content, content)
+         background_tasks.add_task(extract_and_store_memories, user_id, last_msg.content, content)
 
     # Save Assistant Message to Redis
     try:
@@ -356,12 +447,24 @@ async def process_chat(payload: ChatRequest, user: User, db: Session, background
     return ChatResponse(role="assistant", content=content), session_id
 
 def delete_user_chat_history(user_id: str, db: Session):
+    """Delete all chat sessions and their messages for a user.
+
+    The passed ``db`` is the request-scoped session from the route dependency.
+    This function does not live for minutes like a stream, so reusing the
+    scoped session is safe here.
+    """
     sessions = db.query(ChatSession).filter(ChatSession.user_id == user_id).all()
     for session in sessions:
         db.delete(session)
     db.commit()
 
 def export_user_chat_history(user_id: str, db: Session):
+    """Export all chat sessions and messages for a user as JSON.
+
+    Same scoping note as ``delete_user_chat_history``: the request-scoped
+    session is safe here because this is a synchronous read that finishes in
+    under a second.
+    """
     sessions = db.query(ChatSession).filter(ChatSession.user_id == user_id).all()
     export_data = []
     for session in sessions:
@@ -372,12 +475,12 @@ def export_user_chat_history(user_id: str, db: Session):
             "created_at": session.created_at.isoformat(),
             "messages": [
                 {
-                    "role": msg.role, 
+                    "role": msg.role,
                     "content": msg.content,
                     "created_at": msg.created_at.isoformat()
                 } for msg in messages
             ]
         }
         export_data.append(session_data)
-    
+
     return {"sessions": export_data, "generated_at": datetime.now(timezone.utc).isoformat()}

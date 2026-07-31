@@ -82,11 +82,22 @@ def delete_session(
     db.query(ChatMessage).filter(ChatMessage.session_id == session.id).delete()
     db.delete(session)
     db.commit()
-    
-    # Also drop from background tracking if present
-    background_tasks = BackgroundTasks()
-    delete_user_chat_history(str(user.id), session_id)
-    
+
+    # Invalidate the cached history for this session. process_chat reads
+    # session:history:<id> before falling back to the DB, and the key carries a
+    # 24h TTL, so without this the rows are gone but the cache still answers.
+    #
+    # NB: this deliberately does not call delete_user_chat_history — that takes
+    # (user_id, db) and deletes *every* session the user owns. The previous call
+    # here passed session_id as the db argument, which raised AttributeError
+    # before it could do that damage.
+    try:
+        from app.core.redis_client import redis_client
+        redis_client.delete(f"session:history:{session_id}")
+    except Exception as e:
+        # The authoritative delete already committed; a cache miss is harmless.
+        logger.warning(f"Failed to clear cached history for session {session_id}: {e}")
+
     return {"status": "success"}
 
 @router.get("/sessions/{session_id}/messages")
@@ -121,11 +132,15 @@ def search_chats(
 async def chat_message(
     request: Request,
     payload: ChatRequest,
-    db: Session = Depends(get_db),
     user: User = Security(get_current_user, scopes=["chat:write"])
 ):
+    # No ``db`` dependency: process_chat opens its own short-lived sessions in
+    # worker threads. Note this does not free the request's pooled connection —
+    # get_current_user still depends on get_db, and FastAPI caches that
+    # sub-dependency for the request — it just stops an unused Session being
+    # declared here.
     from app.services.chat_service import process_chat
-    response, session_id = await process_chat(payload, user, db)
+    response, session_id = await process_chat(payload, user)
     # Wrap in JSONResponse to add custom header
     from fastapi.responses import JSONResponse
     from fastapi.encoders import jsonable_encoder
@@ -139,12 +154,13 @@ async def chat_message(
 async def chat_stream(
     request: Request,
     payload: ChatRequest,
-    db: Session = Depends(get_db),
     user: User = Security(get_current_user, scopes=["chat:write"])
 ):
+    # Same as /message: no ``db`` here because process_chat manages its own
+    # sessions per worker thread. See the note there about what this does not fix.
     try:
         # Assuming process_chat is modified to return a tuple: (async_generator, session_id)
-        generator, session_id = await process_chat(payload, user, db, stream=True)
+        generator, session_id = await process_chat(payload, user, stream=True)
 
         async def event_generator_wrapper():
             async for chunk in generator:
