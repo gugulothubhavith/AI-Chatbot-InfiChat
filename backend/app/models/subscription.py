@@ -82,7 +82,7 @@ class UserSubscription(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
-    user = relationship("User", backref="subscription")
+    user = relationship("User", back_populates="subscription")
     plan = relationship("SubscriptionPlan", back_populates="subscriptions")
 
 

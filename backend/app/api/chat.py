@@ -214,7 +214,17 @@ async def chat_stream(
 @router.delete("/history")
 async def delete_all_history(
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    # Deliberately `get_current_user`, not `require_consent`: erasure is a right
+    # (GDPR Art. 17), so a user with stale consent must still be able to wipe
+    # their data. See the note in `deps.require_consent`.
+    #
+    # Scoped, though. `get_current_user` skips the scope check entirely when a
+    # route declares none, so an unscoped destructive route accepted any PAT —
+    # a token minted `chat:read` could delete every conversation while being
+    # correctly refused `POST /chat/sessions`. That is the confused-deputy case
+    # scopes exist to prevent. JWT sessions carry `full_access` and are
+    # unaffected.
+    user: User = Security(get_current_user, scopes=["chat:write"])
 ):
     delete_user_chat_history(user.id, db)
     return {"status": "success", "message": "All chat history deleted"}
@@ -222,7 +232,10 @@ async def delete_all_history(
 @router.get("/export")
 async def export_data(
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user)
+    # Ungated for consent (GDPR Art. 20 portability), scoped for the reason
+    # above — export returns decrypted message bodies, so a read-only PAT is
+    # the right floor, not "any token at all".
+    user: User = Security(get_current_user, scopes=["chat:read"])
 ):
     data = export_user_chat_history(user.id, db)
     return data

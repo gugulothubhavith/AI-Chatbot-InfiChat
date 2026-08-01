@@ -19,4 +19,6 @@ class PersonalAccessToken(Base):
     last_used_at = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True)
 
-    user = relationship("User", backref="personal_access_tokens")
+    # `back_populates`, not `backref`: the User side declares the delete cascade
+    # explicitly, and a bare backref creates the collection without one.
+    user = relationship("User", back_populates="personal_access_tokens")

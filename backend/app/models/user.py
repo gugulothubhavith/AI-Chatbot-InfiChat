@@ -51,6 +51,28 @@ class User(Base):
     sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
     consent_events = relationship("ConsentEvent", back_populates="user", cascade="all, delete-orphan")
 
+    # Every child collection reachable from a User needs a delete rule declared
+    # here, or `DELETE /auth/me` fails and the right to erasure (GDPR Art. 17,
+    # DPDP s.12) is unavailable in practice. The failure mode is not a silent
+    # orphan — SQLAlchemy's default is to NULL the child's FK, and these columns
+    # are `nullable=False`, so the flush raises NotNullViolation and the account
+    # survives a reported deletion.
+    #
+    # `passive_deletes=True` on the first two because their FKs already carry
+    # `ondelete="CASCADE"`: the database removes the rows, so there is no reason
+    # to load them into the session first. `files` has no DB-level rule (its FK
+    # is NO ACTION), so SQLAlchemy must issue the child deletes itself — the same
+    # arrangement chat_sessions, memories and snippets above already rely on.
+    personal_access_tokens = relationship(
+        "PersonalAccessToken", back_populates="user",
+        cascade="all, delete-orphan", passive_deletes=True,
+    )
+    subscription = relationship(
+        "UserSubscription", back_populates="user",
+        cascade="all, delete-orphan", passive_deletes=True,
+    )
+    files = relationship("File", cascade="all, delete-orphan")
+
 class UserSession(Base):
     __tablename__ = "user_sessions"
     
