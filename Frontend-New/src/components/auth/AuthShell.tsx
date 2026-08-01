@@ -57,15 +57,23 @@ export function AuthShell({
           </motion.div>
         </div>
 
+        {/* Informational only. Actual consent is an affirmative act — the two
+            required checkboxes on the registration form — never this line. */}
         <p className="text-muted-foreground/70 text-center text-[11.5px] leading-relaxed">
-          By continuing you agree to our{" "}
-          <a href="#" className="hover:text-foreground underline decoration-dotted underline-offset-2">
+          Read our{" "}
+          <Link
+            to="/terms"
+            className="hover:text-foreground underline decoration-dotted underline-offset-2"
+          >
             Terms
-          </a>{" "}
+          </Link>{" "}
           and{" "}
-          <a href="#" className="hover:text-foreground underline decoration-dotted underline-offset-2">
+          <Link
+            to="/privacy"
+            className="hover:text-foreground underline decoration-dotted underline-offset-2"
+          >
             Privacy Policy
-          </a>
+          </Link>
           .
         </p>
       </div>

@@ -10,12 +10,27 @@ export type User = {
   role?: string;
 };
 
+/**
+ * The two affirmative acts collected at registration. Grouped into one object
+ * rather than trailing booleans so `signUp(name, email, pw, true, true)` — where
+ * the flags are indistinguishable at the call site — is not expressible.
+ */
+export type ConsentFlags = {
+  accept_terms: boolean;
+  accept_privacy: boolean;
+};
+
 type AuthState = {
   user: User | null;
   token: string | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (name: string, email: string, password: string) => Promise<void>;
+  signUp: (
+    name: string,
+    email: string,
+    password: string,
+    consent: ConsentFlags,
+  ) => Promise<void>;
   googleSignIn: (credential: string) => Promise<void>;
   signOut: () => void;
   updateProfile: (patch: Partial<User>) => void;
@@ -54,10 +69,13 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      signUp: async (_name, email, password) => {
+      // `_name` is unused on purpose: the backend derives the username from the
+      // email local-part and `UserCreate` has no name field, so there is nowhere
+      // to send it. Kept in the signature to leave the call sites untouched.
+      signUp: async (_name, email, password, consent) => {
         set({ loading: true });
         try {
-          const res = await api.auth.register(email, password);
+          const res = await api.auth.register(email, password, consent);
           set({
             user: toUser(res),
             token: res.access_token,

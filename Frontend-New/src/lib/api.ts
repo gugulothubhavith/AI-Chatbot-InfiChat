@@ -7,6 +7,8 @@
  * Docker reverse-proxy).
  */
 
+import { reportConsentRequired, toConsentRequirement } from "./consent-gate";
+
 const API_BASE = (import.meta.env.VITE_API_URL as string) || "/api/v1";
 
 // Build a fully-qualified URL. When VITE_API_URL is empty the browser's
@@ -52,6 +54,106 @@ function authHeaders(): Record<string, string> {
   return headers;
 }
 
+// ── Errors ──────────────────────────────────────────────────
+
+/** `detail.code` values the client branches on, rather than matching prose. */
+export const API_ERROR_CODES = {
+  consentRequired: "CONSENT_REQUIRED",
+  consentIncomplete: "CONSENT_INCOMPLETE",
+  versionMismatch: "VERSION_MISMATCH",
+} as const;
+
+/**
+ * A failed HTTP response, with the backend's structured `detail` preserved.
+ *
+ * The API raises `HTTPException(detail={"code": ..., "message": ...})` for every
+ * condition a caller might branch on — `CONSENT_REQUIRED`, `VERSION_MISMATCH`,
+ * `CONSENT_INCOMPLETE`. Flattening that into an `Error` whose message was the
+ * stringified JSON left callers regex-matching prose, and put raw JSON in front
+ * of the user. `code` and `message` are lifted out so callers can branch on the
+ * former and display the latter.
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  readonly detail?: unknown;
+
+  constructor(status: number, message: string, opts?: { code?: string; detail?: unknown }) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = opts?.code;
+    this.detail = opts?.detail;
+  }
+}
+
+/** FastAPI's `detail` is a string for simple aborts, an object for the coded
+ *  errors above, and an array of `{loc, msg}` entries for 422 validation
+ *  failures. Normalise all three into one displayable sentence. */
+function detailToMessage(detail: unknown): string | undefined {
+  if (typeof detail === "string") return detail || undefined;
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((entry) =>
+        entry && typeof entry === "object" && typeof (entry as { msg?: unknown }).msg === "string"
+          ? (entry as { msg: string }).msg
+          : undefined,
+      )
+      .filter((msg): msg is string => Boolean(msg));
+    return parts.length ? parts.join("; ") : undefined;
+  }
+  if (detail && typeof detail === "object") {
+    const message = (detail as { message?: unknown }).message;
+    if (typeof message === "string") return message;
+  }
+  return undefined;
+}
+
+function detailToCode(detail: unknown): string | undefined {
+  if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+    const code = (detail as { code?: unknown }).code;
+    if (typeof code === "string") return code;
+  }
+  return undefined;
+}
+
+/**
+ * Turn a non-ok response into an `ApiError`. Consumes the body, so call it at
+ * most once per response.
+ *
+ * The raw body deliberately never reaches the thrown message. A 500 can carry a
+ * driver-level string — a failing SQL constraint, say — and that belongs in the
+ * server log, not on screen. Shapes we do not recognise fall back to a generic
+ * sentence keyed off the status.
+ *
+ * This is also where a consent refusal is published. Nine backend modules
+ * depend on `require_consent`, so the 403 arrives from whichever feature the
+ * user happens to touch first — and both transports funnel their failures
+ * through here, which makes this the one place that sees all of them. It only
+ * announces; it does not clear the session or navigate, because a stale user is
+ * still authenticated and has to stay where they are for the modal to appear
+ * over them.
+ */
+async function toApiError(res: Response): Promise<ApiError> {
+  const raw = await res.text().catch(() => "");
+  let detail: unknown;
+  try {
+    detail = (JSON.parse(raw) as { detail?: unknown }).detail;
+  } catch {
+    // Not JSON — a proxy error page, or an empty body. Leave `detail` unset.
+  }
+  const code = detailToCode(detail);
+  if (res.status === 403 && code === API_ERROR_CODES.consentRequired) {
+    reportConsentRequired(toConsentRequirement(detail));
+  }
+  const message =
+    detailToMessage(detail) ??
+    (res.status >= 500
+      ? "The server ran into a problem. Please try again."
+      : `Request failed (${res.status}).`);
+  return new ApiError(res.status, message, { code, detail });
+}
+
 // ── Generic helpers ─────────────────────────────────────────
 
 async function fetchJSON<T = unknown>(
@@ -73,11 +175,10 @@ async function fetchJSON<T = unknown>(
     // Token expired — clear auth and redirect to login
     localStorage.removeItem("infichat-auth");
     window.location.href = "/login";
-    throw new Error("Unauthorized");
+    throw new ApiError(401, "Your session has expired. Please sign in again.");
   }
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`API ${res.status}: ${body.slice(0, 300)}`);
+    throw await toApiError(res);
   }
   return res.json() as Promise<T>;
 }
@@ -99,9 +200,10 @@ async function fetchSSE(
     body: JSON.stringify(body),
     signal,
   });
+  // Streaming endpoints are consent-gated too, and they bypass `fetchJSON`, so
+  // they need their own conversion for the gate to see a 403.
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`SSE ${res.status}: ${text.slice(0, 300)}`);
+    throw await toApiError(res);
   }
   return res;
 }
@@ -129,6 +231,7 @@ export type AuthResult = {
   avatar_url?: string;
   is_new_user: boolean;
   role?: string;
+  permissions?: string[];
 };
 
 async function login(email: string, password: string): Promise<AuthResult> {
@@ -138,10 +241,27 @@ async function login(email: string, password: string): Promise<AuthResult> {
   });
 }
 
-async function register(email: string, password: string): Promise<AuthResult> {
+/**
+ * Create an account.
+ *
+ * `consent` is a required argument, not an options bag with defaults: the
+ * backend refuses registration unless both flags are explicitly true, and a
+ * default here would let a caller omit consent and still look correct at the
+ * call site. Making it required means the compiler asks the question.
+ */
+async function register(
+  email: string,
+  password: string,
+  consent: { accept_terms: boolean; accept_privacy: boolean },
+): Promise<AuthResult> {
   return fetchJSON<AuthResult>("/auth/register", {
     method: "POST",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({
+      email,
+      password,
+      accept_terms: consent.accept_terms,
+      accept_privacy: consent.accept_privacy,
+    }),
   });
 }
 
@@ -168,6 +288,58 @@ async function googleLogin(credential: string): Promise<AuthResult> {
     method: "POST",
     body: JSON.stringify({ credential }),
   });
+}
+
+// ── Legal / consent endpoints ───────────────────────────────
+
+export type PolicyVersions = {
+  terms_version: string;
+  privacy_version: string;
+};
+
+export type ConsentStatus = {
+  consent_current: boolean;
+  accepted_terms_version: string | null;
+  accepted_privacy_version: string | null;
+  required_terms_version: string;
+  required_privacy_version: string;
+  consent_accepted_at: string | null;
+};
+
+/** Public — no token needed, so the auth screens can show which version they
+ *  are asking about. */
+async function getPolicyVersions(): Promise<PolicyVersions> {
+  return fetchJSON<PolicyVersions>("/legal/versions");
+}
+
+async function getConsent(): Promise<ConsentStatus> {
+  return fetchJSON<ConsentStatus>("/legal/consent");
+}
+
+/**
+ * Accept the current policies.
+ *
+ * The versions are echoed back so the server can reject a client that is
+ * displaying a policy which changed while the modal was open — it answers 409
+ * `VERSION_MISMATCH` rather than silently recording consent to text the user
+ * never saw. They are optional in the API for older clients; this client always
+ * sends them.
+ */
+async function acceptConsent(versions: PolicyVersions): Promise<ConsentStatus> {
+  return fetchJSON<ConsentStatus>("/legal/consent", {
+    method: "POST",
+    body: JSON.stringify({
+      accept_terms: true,
+      accept_privacy: true,
+      terms_version: versions.terms_version,
+      privacy_version: versions.privacy_version,
+    }),
+  });
+}
+
+/** GDPR Art. 7(3). Clears consent; does not delete the account. */
+async function withdrawConsent(): Promise<ConsentStatus> {
+  return fetchJSON<ConsentStatus>("/legal/consent/withdraw", { method: "POST" });
 }
 
 // ── Chat endpoints ──────────────────────────────────────────
@@ -220,6 +392,51 @@ async function renameSession(
   });
 }
 
+// ── Data rights (GDPR Art. 15 / 17, DPDP s.11–12) ───────────
+
+/**
+ * The archive `GET /chat/export` actually returns.
+ *
+ * Deliberately not `ChatSessionDTO[]` — `export_user_chat_history` builds its own
+ * dicts, and they are narrower than the list endpoint's: no `updated_at`,
+ * `workspace` or `is_pinned` on a session, no `id` or `model` on a message.
+ * Reusing the DTOs would advertise fields the export never sends.
+ */
+export type ChatExport = {
+  sessions: Array<{
+    id: string;
+    title: string;
+    created_at: string;
+    messages: Array<{ role: string; content: string; created_at: string }>;
+  }>;
+  generated_at: string;
+};
+
+/** Art. 15 / s.11 — a machine-readable copy of the user's chat history.
+ *
+ *  Consent-gated on the server (`chat.py` depends on `require_consent`), so a
+ *  stale user gets a 403 and the re-consent modal rather than a download. */
+async function exportChatHistory(): Promise<ChatExport> {
+  return fetchJSON<ChatExport>("/chat/export");
+}
+
+/** Art. 17 / s.12 — erase every session and message, keeping the account. */
+async function deleteChatHistory(): Promise<void> {
+  await fetchJSON("/chat/history", { method: "DELETE" });
+}
+
+/**
+ * Art. 17 / s.12 — erase the account itself.
+ *
+ * Sits on `auth`, not `chat`, for a reason that matters: `/auth/me` is not
+ * consent-gated, so erasure stays reachable for a user whose consent has gone
+ * stale. A right to be forgotten that required agreeing to new terms first would
+ * not be a right. The server refuses admin accounts with a 403.
+ */
+async function deleteAccount(): Promise<void> {
+  await fetchJSON("/auth/me", { method: "DELETE" });
+}
+
 // ── Exported API object ─────────────────────────────────────
 
 export const api = {
@@ -227,8 +444,17 @@ export const api = {
   fetchJSON,
   fetchSSE,
   connectWS,
-  auth: { login, register, getMe, refreshToken, googleLogin, logout },
-  chat: { listSessions, createSession, deleteSession, getMessages, renameSession },
+  auth: { login, register, getMe, refreshToken, googleLogin, logout, deleteAccount },
+  chat: {
+    listSessions,
+    createSession,
+    deleteSession,
+    getMessages,
+    renameSession,
+    exportChatHistory,
+    deleteChatHistory,
+  },
+  legal: { getPolicyVersions, getConsent, acceptConsent, withdrawConsent },
 
   // Settings
   getSettings: () => fetchJSON("/settings"),
@@ -263,9 +489,11 @@ export const api = {
         body: form,
         signal,
       });
+      // Same conversion as the other transports. Pressing the mic can be the
+      // first thing a stale user does, so this path has to raise the consent
+      // gate too — and echoing the raw body put `{"detail":{...}}` on screen.
       if (!res.ok) {
-        const body = await res.text().catch(() => "");
-        throw new Error(`transcribe ${res.status}: ${body.slice(0, 200)}`);
+        throw await toApiError(res);
       }
       const data = (await res.json()) as { text?: string };
       return data.text ?? "";

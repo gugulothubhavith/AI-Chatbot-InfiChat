@@ -1,12 +1,33 @@
 import { useState } from "react";
 import { Block, Row, SectionTitle, TabShell } from "./_primitives";
+import { ConsentPanel } from "./ConsentPanel";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { ChevronRight, ChevronLeft, Upload, Trash2, Download, ExternalLink, FileText } from "lucide-react";
+import { ChevronRight, ChevronLeft, Upload, Trash2, Download, ExternalLink, FileText, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
+// Default import then destructure — the repo's existing idiom, per
+// `components/code/FileExplorer.tsx`.
+import fileSaver from "file-saver";
+import { api, ApiError, API_ERROR_CODES } from "@/lib/api";
+import { useChatStore } from "@/stores/chat";
+
+const { saveAs } = fileSaver;
 
 type View = "root" | "rag" | "shared" | "archived";
+
+/**
+ * Both data-rights endpoints below live in `chat.py`, which depends on
+ * `require_consent`. A user whose consent has gone stale gets a 403 that raises
+ * the re-consent modal instead of a result, so the failure has to name that
+ * cause rather than telling them to try again.
+ */
+function failureDescription(err: unknown, fallback: string): string {
+  if (err instanceof ApiError && err.code === API_ERROR_CODES.consentRequired) {
+    return "Accept the updated policies first, then try again.";
+  }
+  return err instanceof Error ? err.message : fallback;
+}
 
 const initialDocs = [
   { id: "d1", name: "product-spec.pdf", size: "2.4 MB" },
@@ -27,9 +48,63 @@ export function DataControlsTab() {
   const [docs, setDocs] = useState(initialDocs);
   const [shared, setShared] = useState(initialShared);
   const [archived, setArchived] = useState(initialArchived);
+  const [exporting, setExporting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
-  const exportData = () => toast.success("Data export queued", { description: "You'll receive a download link shortly." });
-  const deleteAll = () => toast.error("All chats deleted", { description: "This action cannot be undone." });
+  /**
+   * GDPR Art. 15 / DPDP s.11 — hand over the copy, do not promise one.
+   *
+   * The previous handler said a download link was on its way and sent nothing.
+   * This fetches the archive and saves it, and says so only once the file is
+   * written.
+   */
+  async function exportData() {
+    setExporting(true);
+    try {
+      const archive = await api.chat.exportChatHistory();
+      const blob = new Blob([JSON.stringify(archive, null, 2)], {
+        type: "application/json",
+      });
+      // `generated_at` is a tz-aware isoformat from the server and is always
+      // populated, so the date prefix is safe to slice off it.
+      saveAs(blob, `infichat-chat-export-${archive.generated_at.slice(0, 10)}.json`);
+      toast.success("Export downloaded", {
+        description: `${archive.sessions.length} conversation${archive.sessions.length === 1 ? "" : "s"} saved to your device.`,
+      });
+    } catch (err) {
+      toast.error("Could not export your data", {
+        description: failureDescription(err, "Please try again."),
+      });
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  /**
+   * GDPR Art. 17 / DPDP s.12 — erase every conversation, keeping the account.
+   *
+   * The toast follows the response rather than the click: this is irreversible,
+   * and announcing it before the server has done it can report a deletion that
+   * never happened.
+   */
+  async function deleteAll() {
+    setDeleting(true);
+    try {
+      await api.chat.deleteChatHistory();
+      // Every session the store holds was just deleted server-side, and the
+      // cascade took the messages with it. Re-read rather than patch.
+      await useChatStore.getState().loadSessions();
+      toast.success("All chats deleted", {
+        description: "Every conversation has been permanently removed.",
+      });
+    } catch (err) {
+      toast.error("Could not delete your chats", {
+        description: failureDescription(err, "Please try again."),
+      });
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   return (
     <TabShell keyId="data">
@@ -41,10 +116,16 @@ export function DataControlsTab() {
               <ManageRow title="Knowledge base (RAG)" description="Upload files that ground responses." onClick={() => setView("rag")} />
               <ManageRow title="Shared links" description="Public links to chats you've shared." onClick={() => setView("shared")} />
               <ManageRow title="Archived chats" description="Restore or permanently delete chats." onClick={() => setView("archived")} />
-              <Row title="Export data" description="Download a JSON archive of your chats and settings.">
-                <Button size="sm" variant="outline" onClick={exportData}><Download className="mr-1.5 h-3.5 w-3.5" />Download</Button>
+              <Row title="Export your data" description="Download a JSON archive of every conversation and message on your account.">
+                <Button size="sm" variant="outline" onClick={exportData} disabled={exporting}>
+                  {exporting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1.5 h-3.5 w-3.5" />}
+                  {exporting ? "Preparing" : "Download"}
+                </Button>
               </Row>
             </Block>
+
+            <div className="h-6" />
+            <ConsentPanel />
 
             <div className="h-6" />
             <SectionTitle title="Danger zone" />
@@ -56,7 +137,13 @@ export function DataControlsTab() {
                 </div>
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button size="sm" variant="destructive">Delete all</Button>
+                    {/* The in-flight guard sits on the trigger, not the action:
+                        Radix closes the dialog the moment the action is clicked,
+                        so a disabled state there would never be seen. */}
+                    <Button size="sm" variant="destructive" disabled={deleting}>
+                      {deleting ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+                      Delete all
+                    </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>

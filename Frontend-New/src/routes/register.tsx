@@ -33,8 +33,11 @@ function RegisterPage() {
     >
       <AuthForm
         mode="register"
-        onSubmit={async ({ name, email, password }) => {
-          await signUp(name ?? "", email, password);
+        onSubmit={async ({ name, email, password, consent }) => {
+          // `consent` is forwarded verbatim — never defaulted to `true` here.
+          // The form has already refused to submit without both boxes, and the
+          // backend refuses again; this call site must not paper over either.
+          await signUp(name ?? "", email, password, consent);
           nav({ to: "/chat" });
         }}
       />

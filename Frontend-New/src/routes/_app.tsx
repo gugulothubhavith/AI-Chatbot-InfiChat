@@ -2,6 +2,7 @@ import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { Sidebar } from "@/components/shell/Sidebar";
 import { CommandPalette } from "@/components/shell/CommandPalette";
 import { SettingsDialog } from "@/components/shell/SettingsDialog";
+import { ReconsentModal } from "@/components/legal/ReconsentModal";
 import { useAuthStore } from "@/stores/auth";
 import { useState, useEffect } from "react";
 import { SettingsContext } from "@/components/shell/settings-context";
@@ -45,6 +46,10 @@ function AppLayout() {
         </main>
         <CommandPalette />
         <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+        {/* Mounted for every authenticated route, because the 403 that raises it
+            can come from any consent-gated feature. It renders nothing until
+            one arrives. */}
+        <ReconsentModal />
       </div>
     </SettingsContext.Provider>
   );
