@@ -20,7 +20,9 @@ sqlalchemy==2.0.25
 aiosqlite>=0.20.0          # SQLite async support
 alembic==1.13.1
 python-multipart==0.0.9
-python-jose[cryptography]==3.3.0
+# 3.3.0 carries PYSEC-2024-233. jose is what signs and verifies every
+# session token in this app, so it is not a dependency to leave behind.
+python-jose[cryptography]==3.4.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 google-auth>=2.0.0
@@ -30,7 +32,9 @@ stripe>=8.0.0
 email-validator>=2.1.0
 slowapi>=0.1.9
 Pillow>=10.0.0
-PyJWT==2.8.0
+# 2.8.0 carries seven advisories (PYSEC-2026-120/175/177/178/179 and
+# PYSEC-2025-183); 2.13.0 is the fixed line.
+PyJWT==2.13.0
 cryptography>=42.0.0
 psutil==5.9.8
 python-magic>=0.4.27
@@ -48,7 +52,11 @@ redis==5.0.1
 
 # ── SEARCH (pick your RAG backend) ────────────────────────────
 # For ChromaDB (production, Docker):
-chromadb>=0.4.22
+# Pinned to the same minor as the server image in docker-compose.yml. Chroma
+# changed its HTTP API between majors and the client refuses to talk to a
+# server on the other side of that line; an unpinned client with a pinned
+# server (or the reverse) silently degrades to the in-memory FAISS store.
+chromadb==0.5.0
 
 # For FAISS (local dev, no Docker):
 faiss-cpu>=1.7.4
@@ -86,3 +94,16 @@ docker>=7.1.0              # Optional: for Docker sandbox
 prometheus_client==0.20.0
 pip-audit>=2.7.2
 json_repair
+pyotp>=2.9.0
+
+# Web Push (VAPID) — notification delivery
+pywebpush==2.0.0
+
+# IANA timezone database for `zoneinfo`.
+#
+# python:3.11-slim does not guarantee /usr/share/zoneinfo, and `zoneinfo` only
+# falls back to this package when the system database is absent. Without it
+# ZoneInfo("Asia/Kolkata") raises, supervision_service silently falls back to
+# UTC, and a parental quiet-hours window fires at the wrong time of day —
+# a failure that looks like the feature working, just wrongly.
+tzdata>=2024.1

@@ -1,12 +1,49 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Admin Dashboard</title>
-</head>
-<body>
-  <div id="root"></div>
-  <script type="module" src="/src/main.tsx"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <!-- An operations console must never be indexed or embedded. -->
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+
+    <title>InfiChat Admin</title>
+
+    <!--
+      Theme is applied before first paint. Without this the console flashes
+      light, then snaps to dark on hydration — very visible on a dark-themed
+      dashboard. Mirrors the resolution order in src/lib/theme.ts.
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("infichat_admin_theme");
+          var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var isDark = stored === "dark" || (stored !== "light" && prefersDark);
+          if (isDark) document.documentElement.classList.add("dark");
+        } catch (e) {
+          /* Private mode or blocked storage — fall through to the light default. */
+        }
+      })();
+    </script>
+
+    <!--
+      Runtime config, written by the container entrypoint. Must load before the
+      app module so window.__INFICHAT_ADMIN__ exists when config.ts reads it.
+    -->
+    <script src="/config.js"></script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>

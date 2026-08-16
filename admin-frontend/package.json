@@ -1,41 +1,47 @@
 {
-  "name": "admin-frontend",
-  "version": "0.0.0",
+  "name": "infichat-admin",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build"
+    "build": "tsc --noEmit && vite build",
+    "build:nocheck": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.15",
+    "@radix-ui/react-avatar": "^1.1.10",
+    "@radix-ui/react-checkbox": "^1.3.3",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
+    "@radix-ui/react-label": "^2.1.7",
+    "@radix-ui/react-popover": "^1.1.15",
+    "@radix-ui/react-scroll-area": "^1.2.10",
+    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-separator": "^1.1.7",
     "@radix-ui/react-slot": "^1.2.4",
-    "@radix-ui/react-toast": "^1.2.15",
+    "@radix-ui/react-switch": "^1.2.6",
+    "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",
-    "@react-three/drei": "^10.7.7",
-    "@react-three/fiber": "^9.5.0",
     "@tailwindcss/vite": "^4.2.1",
-    "@xterm/addon-fit": "^0.11.0",
-    "@xterm/xterm": "^6.0.0",
+    "@tanstack/react-query": "^5.90.2",
     "@xyflow/react": "^12.10.1",
     "axios": "^1.13.6",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "es-toolkit": "^1.49.0",
+    "cmdk": "^1.1.1",
+    "date-fns": "^4.1.0",
     "framer-motion": "^12.34.3",
     "lucide-react": "^0.576.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-force-graph-3d": "^1.29.1",
-    "react-globe.gl": "^2.37.0",
-    "react-is": "^19.2.4",
+    "react-is": "^18.3.1",
     "react-router-dom": "^7.13.1",
     "recharts": "^3.7.0",
+    "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
-    "tailwindcss": "^4.2.1",
-    "three": "^0.183.2",
-    "xlsx": "^0.18.5"
+    "tailwindcss": "^4.2.1"
   },
   "devDependencies": {
     "@types/node": "^25.3.3",
@@ -43,7 +49,6 @@
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^5.1.4",
     "typescript": "~5.6.2",
-    "vite": "^6.4.1",
-    "vite-plugin-react": "^4.0.1"
+    "vite": "^6.4.1"
   }
 }
