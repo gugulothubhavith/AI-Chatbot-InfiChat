@@ -1,0 +1,138 @@
+INFICHAT PROPRIETARY SOFTWARE LICENSE
+Version 1.0 — Effective 2026
+
+Copyright (c) 2026 Bhavith Guguloth (gugulothubhavith). All rights reserved.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+NOTICE
+
+This software and its source code, documentation, configuration templates,
+database migration scripts, and all associated materials (collectively, the
+"Software") are the exclusive intellectual property of Bhavith Guguloth and
+are protected by copyright law, international treaty provisions, and other
+applicable intellectual property laws.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+GRANT OF LICENSE — SELF-HOSTING
+
+Subject to the terms and conditions of this License, the copyright holder
+grants you a limited, non-exclusive, non-transferable, revocable license to:
+
+  1. Download, install, and operate a single instance of the Software solely
+     for your own personal or internal organizational use on infrastructure
+     that you own or control ("Self-Hosting").
+
+  2. Modify configuration files (*.example, docker-compose.yml) solely to the
+     extent necessary to deploy the Software in your environment.
+
+  3. Read and study the publicly available documentation and configuration
+     templates for the purpose of evaluating, deploying, or integrating the
+     Software.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+RESTRICTIONS
+
+Unless you have entered into a separate written commercial license agreement
+with the copyright holder, you may NOT:
+
+  a) DISTRIBUTE — Sell, sublicense, redistribute, or otherwise transfer the
+     Software or any portion thereof to any third party, whether in source or
+     binary form, with or without modification.
+
+  b) REBRAND — Remove, alter, or obscure any copyright notices, trademarks,
+     trade names, or other proprietary markings from the Software.
+
+  c) COMPETE — Use the Software, or any substantial portion of it, to build,
+     offer, or operate a product or service that competes with InfiChat or
+     any product or service offered by the copyright holder.
+
+  d) REVERSE ENGINEER — Decompile, disassemble, or otherwise attempt to
+     derive the source code of any non-open-source component of the Software
+     beyond what is made available in the public repository.
+
+  e) PUBLIC HOSTING / SaaS — Operate the Software as a hosted service
+     accessible to the general public or to any party other than your own
+     employees or members, without a separate written commercial agreement.
+
+  f) SUBLICENSE — Grant any rights under this License to any third party.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+OPEN-SOURCE COMPONENTS
+
+The Software incorporates open-source libraries and components, each governed
+by their respective licenses (Apache 2.0, MIT, BSD, etc.). These third-party
+licenses are not affected by this License. A complete list of third-party
+dependencies and their licenses can be found in:
+
+  - backend/requirements.txt (Python dependencies)
+  - Frontend-New/package.json (Frontend dependencies)
+  - admin-frontend/package.json (Admin UI dependencies)
+
+The restrictions in this License apply solely to the original, proprietary
+code authored by Bhavith Guguloth and do not restrict your rights under the
+open-source licenses of incorporated third-party components.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+COMMERCIAL LICENSING
+
+For any use case not explicitly permitted above — including but not limited to:
+  - Public SaaS or hosted deployments
+  - Multi-tenant commercial platforms
+  - OEM or white-label integration
+  - Distribution to end users
+  - Government or enterprise deployments
+
+Please contact the copyright holder to obtain a commercial license:
+
+  Email   : gugulothubhavith2005@gmail.com
+  GitHub  : https://github.com/gugulothubhavith
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DISCLAIMER OF WARRANTIES
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, SECURITY, AND NON-INFRINGEMENT. THE
+COPYRIGHT HOLDER DOES NOT WARRANT THAT THE SOFTWARE WILL BE ERROR-FREE,
+UNINTERRUPTED, OR FREE OF SECURITY VULNERABILITIES.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+LIMITATION OF LIABILITY
+
+IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY DIRECT, INDIRECT,
+INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+OR PROFITS; BUSINESS INTERRUPTION; OR SECURITY INCIDENTS) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT,
+ARISING IN ANY WAY OUT OF THE USE OR INABILITY TO USE THE SOFTWARE, EVEN IF
+ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+GOVERNING LAW
+
+This License shall be governed by and construed in accordance with the laws of
+India, without regard to its conflict of law provisions. Any disputes arising
+under this License shall be subject to the exclusive jurisdiction of the courts
+of Hyderabad, Telangana, India.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+TERMINATION
+
+This License is effective until terminated. Your rights under this License
+will terminate automatically, without notice, if you fail to comply with any
+of its terms. Upon termination, you must immediately destroy all copies of the
+Software in your possession or control.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Copyright (c) 2026 Bhavith Guguloth. All rights reserved.
+InfiChat™ is a trademark of Bhavith Guguloth.
