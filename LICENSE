@@ -15,14 +15,14 @@ applicable intellectual property laws.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-GRANT OF LICENSE — SELF-HOSTING
+GRANT OF LICENSE — USE
 
 Subject to the terms and conditions of this License, the copyright holder
 grants you a limited, non-exclusive, non-transferable, revocable license to:
 
   1. Download, install, and operate a single instance of the Software solely
      for your own personal or internal organizational use on infrastructure
-     that you own or control ("Self-Hosting").
+     that you own or control.
 
   2. Modify configuration files (*.example, docker-compose.yml) solely to the
      extent necessary to deploy the Software in your environment.

@@ -3,15 +3,14 @@
 <br/>
 
 <pre>
-██╗███╗   ██╗███████╗██╗ ██████╗██╗  ██╗ █████╗ ████████╗
-██║████╗  ██║██╔════╝██║██╔════╝██║  ██║██╔══██╗╚══██╔══╝
-██║██╔██╗ ██║█████╗  ██║██║     ███████║███████║   ██║   
-██║██║╚██╗██║██╔══╝  ██║██║     ██╔══██║██╔══██║   ██║   
-██║██║ ╚████║██║     ██║╚██████╗██║  ██║██║  ██║   ██║   
-╚═╝╚═╝  ╚═══╝╚═╝     ╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝
+██ ███    ██ ███████ ██  ██████ ██   ██  █████  ████████
+██ ████   ██ ██      ██ ██      ██   ██ ██   ██    ██
+██ ██ ██  ██ █████   ██ ██      ███████ ███████    ██   
+██ ██  ██ ██ ██      ██ ██      ██   ██ ██   ██    ██   
+██ ██   ████ ██      ██  ██████ ██   ██ ██   ██    ██   
 </pre>
 
-<h3>The Most Powerful Self-Hosted Generative AI Platform</h3>
+<h3>InfiChat — AI Chat Platform</h3>
 
 <p><em>Multi-Model &nbsp;·&nbsp; Agentic Squads &nbsp;·&nbsp; Deep Research &nbsp;·&nbsp; RAG &nbsp;·&nbsp; Voice &nbsp;·&nbsp; Real-time Groups &nbsp;·&nbsp; Full Admin Console</em></p>
 
@@ -32,7 +31,7 @@
 
 <br/>
 
-> **InfiChat** is a production-grade, enterprise-ready, fully self-hosted Generative AI platform.  
+> **InfiChat** is a production-grade, enterprise-ready Generative AI Chat Platform.  
 > Every model call, every user message, every document — **stays on your infrastructure. Forever.**
 
 <br/>
@@ -1257,7 +1256,7 @@ npm run dev                       # → http://localhost:5174
 ```
 Copyright (c) 2026 Bhavith Guguloth. All rights reserved.
 
-InfiChat is proprietary software. A limited self-hosting license is granted
+InfiChat is proprietary software. A limited license is granted
 to individuals and organizations for personal or internal use only.
 
 Commercial use, redistribution, public SaaS hosting, white-labeling,
@@ -1309,7 +1308,7 @@ InfiChat is built on the shoulders of exceptional open-source projects:
 
 <br/>
 
-**InfiChat — Built with ❤️ · Self-hosted · Your data, your rules · No cloud required**
+**InfiChat — AI Chat Platform · Built with ❤️ · Your data, your rules**
 
 <br/>
 
