@@ -451,6 +451,14 @@ lib64/
 */.ipynb_checkpoints/*
 
 # ──────────────────────────────────────────────────────────────────────────────
-# END — if something should be tracked that this file hides, add an explicit
-# negation rule (!) here rather than loosening a pattern above.
+# SHOWCASE REPOSITORY CONFIGURATION
 # ──────────────────────────────────────────────────────────────────────────────
+# Ignore everything in the root by default
+/*
+
+# Explicitly allow the showcase files
+!/.gitignore
+!/FEATURES.md
+!/LICENSE
+!/README.md
+!/photo/
