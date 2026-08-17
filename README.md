@@ -36,7 +36,7 @@
 
 <br/>
 
-**[🚀 Quick Start](#-quick-start)** · **[✨ Features](#-features)** · **[🏗 Architecture](#-architecture)** · **[🤖 AI Models](#-ai-model-ecosystem)** · **[🔌 Connectors](#-integrations--connectors)** · **[🛡 Security](#-security--compliance)** · **[📜 License](#-license)**
+**[🚀 Quick Start](#-quick-start)** · **[📸 Feature Showcase](FEATURES.md)** · **[✨ Features](#-features)** · **[🏗 Architecture](#-architecture)** · **[🤖 AI Models](#-ai-model-ecosystem)** · **[🔌 Connectors](#-integrations--connectors)** · **[🛡 Security](#-security--compliance)** · **[📜 License](#-license)**
 
 ---
 
@@ -78,6 +78,8 @@
 ## ✨ Features
 
 InfiChat is not a chatbot. It is a **complete AI operating system** — every feature you'd expect from a frontier AI product, built entirely on your own infrastructure.
+
+> 📸 **[Click here to view the detailed visual Feature Showcase with screenshots (FEATURES.md)](FEATURES.md)**
 
 <br/>
 
